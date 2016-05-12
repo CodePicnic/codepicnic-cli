@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"github.com/codegangsta/cli"
 	"github.com/go-ini/ini"
+	"github.com/ryanuber/columnize"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/user"
+	"strconv"
 )
 
 type Token struct {
@@ -21,6 +24,22 @@ type Token struct {
 type Console struct {
 	Url           string `json:"url"`
 	ContainerName string `json:"container_name"`
+}
+
+type ConsoleExtra struct {
+	Id            int    `json:"id"`
+	Content       string `json:"content"`
+	Title         string `json:"title"`
+	Name          string `json:"name"`
+	ContainerName string `json:"container_name"`
+	ContainerType string `json:"container_type"`
+	CustomImage   string `json:"custom_image"`
+	CreatedAt     string `json:"created_at"`
+	Permalink     string `json:"permalink"`
+}
+
+type ConsoleCollection struct {
+	Consoles []ConsoleExtra `json:"consoles"`
 }
 
 func GetCredentialsFromFile() (client_id string, client_secret string) {
@@ -96,6 +115,30 @@ func CreateConsole(access_token string) string {
 	return console.ContainerName
 }
 
+//func ListConsoles(access_token string) []Console {
+func ListConsoles(access_token string) []ConsoleExtra {
+
+	cp_consoles_url := "https://codepicnic.com/api/consoles.json"
+	req, err := http.NewRequest("GET", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	//fmt.Println("response Status:", resp.Status)
+	//fmt.Printf("%+v\n", resp)
+	var console_collection ConsoleCollection
+	body, err := ioutil.ReadAll(resp.Body)
+	_ = json.Unmarshal(body, &console_collection)
+	//_ = json.NewDecoder(resp.Body).Decode(&console_collection)
+	//fmt.Printf("%+v\n", string(body))
+	//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
+	return console_collection.Consoles
+}
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "codepicnic"
@@ -110,6 +153,26 @@ func main() {
 				access_token := GetTokenAccess()
 				container_name := CreateConsole(access_token)
 				fmt.Println(container_name)
+				return nil
+			},
+		},
+		{
+			Name:    "list",
+			Aliases: []string{"ls"},
+			Usage:   "list consoles",
+			Action: func(c *cli.Context) error {
+				access_token := GetTokenAccess()
+				consoles := ListConsoles(access_token)
+				//fmt.Printf("%#v\n", consoles[0].Title)
+				output := []string{
+					"ID | TITLE | NAME | CONTAINER NAME | CONTAINER TYPE | CREATED | PERMALINK",
+				}
+				for i := range consoles {
+					console_cols := strconv.Itoa(consoles[i].Id) + "|" + consoles[i].Title + "|" + consoles[i].Name + "|" + consoles[i].ContainerName + "|" + consoles[i].ContainerType + "|" + consoles[i].CreatedAt + "|" + "http://codepicnic.com/consoles/" + consoles[i].Permalink
+					output = append(output, console_cols)
+				}
+				result := columnize.SimpleFormat(output)
+				fmt.Println(result)
 				return nil
 			},
 		},
