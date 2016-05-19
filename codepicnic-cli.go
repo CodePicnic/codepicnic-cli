@@ -274,44 +274,18 @@ func ConnectConsole(access_token string, container_name string) {
 		fmt.Println(err)
 		panic(err)
 	}
-	fmt.Println(r.ID)
+	//fmt.Println(r.ID)
 
-	/**
-	err = cli.ContainerExecStart(context.Background(), r.ID, types.ExecStartCheck{
-		Detach: true,
-		Tty:    false,
-	})
-	_, err = cli.ContainerExecAttach(context.Background(), r.ID, types.ExecConfig{User: "", Cmd: []string{"ls"}, Tty: true, AttachStdin: true, AttachStderr: true, AttachStdout: true, Detach: false})
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
-	}*/
-	aResp, err := cli.ContainerExecAttach(context.Background(), r.ID, types.ExecConfig{User: "", Cmd: []string{"ls"}, Tty: true, AttachStdin: true, AttachStderr: true, AttachStdout: true, Detach: false})
+	aResp, err := cli.ContainerExecAttach(context.Background(), r.ID, types.ExecConfig{Tty: true, Detach: false})
 
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
 	}
-	/*
-		aResp, err := cli.ContainerAttach(context.Background(), container_name, types.ContainerAttachOptions{
-			Stream: true,
-			Stdin:  false,
-			Stdout: true,
-			Stderr: true,
-		})*/
 	tty := true
 	if err != nil {
 		log.Fatalf("Couldn't attach to container: %s", err)
 	}
-	/*
-		//go func() {
-		if tty {
-			io.Copy(os.Stdout, aResp.Reader)
-		} else {
-			stdcopy.StdCopy(os.Stdout, os.Stderr, aResp.Reader)
-		}
-		//}()*/
-
 	defer aResp.Close()
 	receiveStdout := make(chan error, 1)
 	if os.Stdout != nil || os.Stderr != nil {
@@ -351,10 +325,6 @@ func ConnectConsole(access_token string, container_name string) {
 		}
 	}
 
-	//_, err = cli.ContainerWait(context.Background(), container_name)
-	//if err != nil {
-	//	log.Fatalf("Error waiting for container to finished: %s", err)
-	//}
 	return
 }
 
@@ -508,6 +478,7 @@ func main() {
 			Usage: "connect to a console",
 			Action: func(c *cli.Context) error {
 				access_token, _ := GetTokenAccess()
+				StartConsole(access_token, c.Args()[0])
 				ConnectConsole(access_token, c.Args()[0])
 				return nil
 			},
