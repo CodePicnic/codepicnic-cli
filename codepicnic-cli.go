@@ -22,6 +22,11 @@ import (
 	"strconv"
 	"strings"
 	//"time"
+	"bazil.org/fuse"
+	"bazil.org/fuse/fs"
+	"bazil.org/fuse/fuseutil"
+	"github.com/Jeffail/gabs"
+	//"syscall"
 )
 
 type Token struct {
@@ -60,6 +65,8 @@ type ConsoleJson struct {
 type ConsoleCollection struct {
 	Consoles []ConsoleJson `json:"consoles"`
 }
+
+const CodepicnicAuthServer = "http://127.0.0.1:4001"
 
 func GetCredentialsFromFile() (client_id string, client_secret string) {
 	cfg, err := ini.Load(getHomeDir() + "/.codepicnic/credentials")
@@ -183,10 +190,8 @@ func CreateConsole(access_token string, console_extra ConsoleExtra) string {
 	return console.ContainerName
 }
 
-//func ListConsoles(access_token string) []Console {
 func ListConsoles(access_token string) []ConsoleJson {
 
-	//cp_consoles_url := "https://codepicnic.com/api/consoles.json"
 	cp_consoles_url := "https://codepicnic.com/api/consoles/all"
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
@@ -194,7 +199,6 @@ func ListConsoles(access_token string) []ConsoleJson {
 	client := &http.Client{}
 	//fmt.Println(time.Now().Format("20060102150405"))
 	resp, err := client.Do(req)
-	//fmt.Println(time.Now().Format("20060102150405"))
 	if err != nil {
 		panic(err)
 	}
@@ -259,6 +263,23 @@ func RestartConsole(access_token string, container_name string) {
 	var console Console
 	_ = json.NewDecoder(resp.Body).Decode(&console)
 	return
+}
+
+func ProxyConsole(access_token string, container_name string) string {
+
+	cp_connect_url := CodepicnicAuthServer + "/connect/" + container_name
+	req, err := http.NewRequest("GET", cp_connect_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("%+v\n", err)
+		panic(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	return string(body)
 }
 
 func ConnectConsole(access_token string, container_name string) {
@@ -326,6 +347,231 @@ func ConnectConsole(access_token string, container_name string) {
 	}
 
 	return
+}
+
+type FS struct {
+	container string
+	token     string
+	file      *File
+}
+
+func (f *FS) Root() (fs.Node, error) {
+	//fmt.Printf("FS Root \n")
+	node_dir := &Dir{
+		container: f.container,
+		token:     f.token,
+		path:      "/",
+	}
+	return node_dir, nil
+}
+
+type Dir struct {
+	container string
+	token     string
+	path      string
+	mime      string
+	fs        *FS
+}
+
+type File struct {
+	name      string
+	path      string
+	mime      string
+	container string
+	token     string
+}
+
+func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
+	//fmt.Printf("Dir Attr %s \n", d.path)
+	a.Mode = os.ModeDir | 0755
+	return nil
+}
+
+func ListFiles(access_token string, container_name string, path string) []File {
+	cp_consoles_url := "https://codepicnic.com/api/consoles/" + container_name + "/files?path=" + path
+	req, err := http.NewRequest("GET", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	jsonFiles, err := gabs.ParseJSON(body)
+	jsonPaths, _ := jsonFiles.Search("paths").ChildrenMap()
+	jsonTypes, _ := jsonFiles.Search("types").ChildrenMap()
+	var FileCollection []File
+	for key, child := range jsonPaths {
+		var jsonFile File
+		jsonFile.name = string(key)
+		jsonFile.path = child.Data().(string)
+		jsonFile.mime = jsonTypes[key].Data().(string)
+		FileCollection = append(FileCollection, jsonFile)
+		//fmt.Printf("key: %v, value: %v, type: %v\n", key, child.Data().(string), jsonTypes[key])
+		//fmt.Printf("key: %v, value: %v, type: %v\n", jsonFile.name, jsonFile.path, jsonFile.mime)
+
+	}
+	//for key, child := range jsonTypes {
+	//	fmt.Printf("key: %v, value: %v\n", key, child.Data().(string))
+	//}
+	//_ = json.NewDecoder(resp.Body).Decode(&console_collection)
+	//fmt.Printf("%+v\n", string(body))
+	//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
+	return FileCollection
+}
+
+func MountConsole(access_token string, container_name string, mount_dir string) error {
+	mp, err := fuse.Mount(mount_dir + "/" + container_name)
+	if err != nil {
+		return err
+	}
+	defer mp.Close()
+	filesys := &FS{
+		token:     access_token,
+		container: container_name,
+	}
+	err = fs.Serve(mp, filesys)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := mp.MountError; err != nil {
+		return err
+	}
+	return nil
+}
+
+var _ = fs.NodeRequestLookuper(&Dir{})
+
+func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
+	//path := req.Name
+	//fmt.Printf("Lookup %v \n", req.Name)
+	for _, f := range ListFiles(d.token, d.container, "") {
+		if req.Name == f.name {
+			//fmt.Printf("Switch %s %s \n", f.name, f.mime)
+			switch {
+			case f.mime == "inode/directory":
+				//fmt.Printf("Case DIR %v \n", f.name)
+				child := &Dir{
+					container: d.container,
+					token:     d.token,
+					path:      req.Name,
+				}
+				return child, nil
+			default:
+				//fmt.Printf("Case FILE %v \n", f.name)
+				child := &File{
+					name:      f.name,
+					mime:      f.mime,
+					path:      f.path,
+					container: d.container,
+					token:     d.token,
+				}
+				return child, nil
+			}
+		}
+	}
+	//child := &File{
+	//	name: req.Name,
+	//}
+	//return child, nil
+	//d.fs.file.name = req.Name
+	//return d.fs.file, nil
+	return nil, fuse.ENOENT
+	//if d.file != nil {
+	//	path = d.file.Name + path
+	//}
+	//for _, f := range d.archive.File {
+	//	switch {
+	//	case f.Name == path:
+	//		child := &File{
+	//			file: f,
+	//		}
+	//		return child, nil
+	//	case f.Name[:len(f.Name)-1] == path && f.Name[len(f.Name)-1] == '/':
+	//		child := &Dir{
+	//			archive: d.archive,
+	//			file:    f,
+	//		}
+	//		return child, nil
+	//	}
+	//}
+}
+
+var _ = fs.HandleReadDirAller(&Dir{})
+
+func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	var dirDirs []fuse.Dirent
+	var inode fuse.Dirent
+	//fmt.Printf("Start ReadDirAll \n")
+	for _, f := range ListFiles(d.token, d.container, "") {
+		//fmt.Printf("%s \n", f.name)
+
+		//fmt.Printf("File List %s %s \n", f.name, f.mime)
+		inode.Name = f.name
+		if f.mime == "inode/directory" {
+			inode.Type = fuse.DT_Dir
+		} else {
+			inode.Type = fuse.DT_File
+		}
+		dirDirs = append(dirDirs, inode)
+	}
+	//fmt.Printf("End ReadDirAll \n")
+	return dirDirs, nil
+}
+
+var _ fs.Node = (*File)(nil)
+
+func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
+	//a.Inode = 1
+	//fmt.Printf("File Attr %s %s \n", f.name, f.mime)
+	if f.mime == "inode/directory" {
+		a.Mode = os.ModeDir | 0755
+	} else {
+		a.Mode = 0644
+	}
+	t, _ := f.ReadFile()
+	a.Size = uint64(len(t))
+	return nil
+}
+
+func (f *File) ReadFile() (string, error) {
+	cp_consoles_url := "https://codepicnic.com/api/consoles/" + f.container + "/" + f.name
+	req, err := http.NewRequest("GET", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+f.token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	return string(body), nil
+}
+
+//var _ = fs.NodeOpener(&File{})
+var _ fs.NodeOpener = (*File)(nil)
+
+func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	//if !req.Flags.IsReadOnly() {
+	//	return nil, fuse.Errno(syscall.EACCES)
+	//}
+	resp.Flags |= fuse.OpenKeepCache
+	return f, nil
+	//return &FileHandle{path: f.path}, nil
+}
+
+var _ fs.Handle = (*File)(nil)
+
+var _ fs.HandleReader = (*File)(nil)
+
+func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
+	//t := f.content.Load().(string)
+	t, _ := f.ReadFile()
+	fuseutil.HandleRead(req, resp, []byte(t))
+	return nil
 }
 
 func main() {
@@ -400,6 +646,7 @@ func main() {
 			Usage:   "list consoles",
 			Action: func(c *cli.Context) error {
 				access_token, err := GetTokenAccess()
+				SaveTokenToFile(access_token)
 				if err != nil {
 					fmt.Println("Error: ", err)
 					panic(err)
@@ -480,6 +727,37 @@ func main() {
 				access_token, _ := GetTokenAccess()
 				StartConsole(access_token, c.Args()[0])
 				ConnectConsole(access_token, c.Args()[0])
+				//fmt.Println(ProxyConsole(access_token, c.Args()[0]))
+				return nil
+			},
+		},
+		{
+			Name:  "mount",
+			Usage: "mount /app filesystem from a container",
+			Action: func(c *cli.Context) error {
+				access_token, _ := GetTokenAccess()
+				StartConsole(access_token, c.Args()[0])
+				MountConsole(access_token, c.Args()[0], c.Args()[1])
+				return nil
+			},
+		},
+		{
+			Name:  "files",
+			Usage: "list files from a container",
+			Action: func(c *cli.Context) error {
+				access_token, _ := GetTokenAccess()
+				StartConsole(access_token, c.Args()[0])
+				ListFiles(access_token, c.Args()[0], "")
+				return nil
+			},
+		},
+		{
+			Name:  "cat",
+			Usage: "cat contents from file",
+			Action: func(c *cli.Context) error {
+				access_token, _ := GetTokenAccess()
+				StartConsole(access_token, c.Args()[0])
+				//ReadFile(access_token, c.Args()[0], "")
 				return nil
 			},
 		},
