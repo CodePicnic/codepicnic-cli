@@ -16,18 +16,29 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/user"
 	"strconv"
 	"strings"
+	"sync"
 	//"time"
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 	"bazil.org/fuse/fuseutil"
 	"github.com/Jeffail/gabs"
-	//"syscall"
+	"syscall"
 )
+
+//const site = "https://codepicnic.com"
+
+const site = "https://codeground.xyz"
+const FragSeparator = ':'
+
+//const swarm_host = "tcp://52.200.53.168:4000"
+
+const swarm_host = "tcp://54.210.2.20:4000"
 
 type Token struct {
 	Access  string `json:"access_token"`
@@ -132,7 +143,7 @@ func GetTokenAccess() (string, error) {
 
 func GetTokenAccessFromCredentials(client_id string, client_secret string) (string, error) {
 
-	cp_token_url := "https://codepicnic.com/oauth/token"
+	cp_token_url := site + "/oauth/token"
 	//client_id, client_secret = GetCredentialsFromFile()
 	cp_payload := `{ "grant_type": "client_credentials","client_id": "` + client_id + `", "client_secret": "` + client_secret + `"}`
 	var jsonStr = []byte(cp_payload)
@@ -170,7 +181,7 @@ Content-Type: application/json; charset=utf-8
 
 func CreateConsole(access_token string, console_extra ConsoleExtra) string {
 
-	cp_consoles_url := "https://codepicnic.com/api/consoles"
+	cp_consoles_url := site + "/api/consoles"
 
 	//cp_payload := `{ "console:    { "grant_type": "client_credentials","client_id": "` + client_id + `", "client_secret": "` + client_secret + `"}`
 	cp_payload := ` { "console": { "container_size": "` + console_extra.Size + `", "container_type": "` + console_extra.Type + `", "title": "` + console_extra.Title + `" , "hostname": "` + console_extra.Hostname + `", "current_mode": "` + console_extra.Mode + `" }  }`
@@ -192,7 +203,7 @@ func CreateConsole(access_token string, console_extra ConsoleExtra) string {
 
 func ListConsoles(access_token string) []ConsoleJson {
 
-	cp_consoles_url := "https://codepicnic.com/api/consoles/all"
+	cp_consoles_url := site + "/api/consoles/all"
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
@@ -216,7 +227,7 @@ func ListConsoles(access_token string) []ConsoleJson {
 
 func StopConsole(access_token string, container_name string) {
 
-	cp_consoles_url := "https://codepicnic.com/api/consoles/" + container_name + "/stop"
+	cp_consoles_url := site + "/api/consoles/" + container_name + "/stop"
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
@@ -233,7 +244,7 @@ func StopConsole(access_token string, container_name string) {
 
 func StartConsole(access_token string, container_name string) {
 
-	cp_consoles_url := "https://codepicnic.com/api/consoles/" + container_name + "/start"
+	cp_consoles_url := site + "/api/consoles/" + container_name + "/start"
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
@@ -250,7 +261,7 @@ func StartConsole(access_token string, container_name string) {
 
 func RestartConsole(access_token string, container_name string) {
 
-	cp_consoles_url := "https://codepicnic.com/api/consoles/" + container_name + "/restart"
+	cp_consoles_url := site + "/api/consoles/" + container_name + "/restart"
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
@@ -285,7 +296,7 @@ func ProxyConsole(access_token string, container_name string) string {
 func ConnectConsole(access_token string, container_name string) {
 
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
-	cli, err := client.NewClient("tcp://52.200.53.168:4000", "v1.22", nil, defaultHeaders)
+	cli, err := client.NewClient(swarm_host, "v1.22", nil, defaultHeaders)
 	if err != nil {
 		panic(err)
 	}
@@ -350,35 +361,43 @@ func ConnectConsole(access_token string, container_name string) {
 }
 
 type FS struct {
-	container string
-	token     string
-	file      *File
+	container  string
+	token      string
+	file       *File
+	mountpoint string
 }
 
 func (f *FS) Root() (fs.Node, error) {
 	//fmt.Printf("FS Root \n")
 	node_dir := &Dir{
-		container: f.container,
-		token:     f.token,
-		path:      "/",
+		container:  f.container,
+		token:      f.token,
+		path:       "/",
+		mountpoint: f.mountpoint,
 	}
 	return node_dir, nil
 }
 
 type Dir struct {
-	container string
-	token     string
-	path      string
-	mime      string
-	fs        *FS
+	container  string
+	token      string
+	path       string
+	mime       string
+	mountpoint string
+	fs         *FS
 }
 
 type File struct {
-	name      string
-	path      string
-	mime      string
-	container string
-	token     string
+	name       string
+	path       string
+	mime       string
+	container  string
+	token      string
+	mountpoint string
+	mu         sync.Mutex
+	content    []byte
+	data       []byte
+	writers    uint
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -388,7 +407,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func ListFiles(access_token string, container_name string, path string) []File {
-	cp_consoles_url := "https://codepicnic.com/api/consoles/" + container_name + "/files?path=" + path
+	cp_consoles_url := site + "/api/consoles/" + container_name + "/files?path=" + path
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
@@ -425,21 +444,25 @@ func ListFiles(access_token string, container_name string, path string) []File {
 func MountConsole(access_token string, container_name string, mount_dir string) error {
 	mp, err := fuse.Mount(mount_dir + "/" + container_name)
 	if err != nil {
+		fmt.Printf("serve err %v", err)
 		return err
 	}
 	defer mp.Close()
 	filesys := &FS{
-		token:     access_token,
-		container: container_name,
+		token:      access_token,
+		container:  container_name,
+		mountpoint: mount_dir + "/" + container_name,
 	}
 	err = fs.Serve(mp, filesys)
 	if err != nil {
-		log.Fatal(err)
-	}
-	if err := mp.MountError; err != nil {
+		fmt.Printf("serve err %v", err)
 		return err
 	}
-	return nil
+	if err := mp.MountError; err != nil {
+		fmt.Printf("serve err %v", err)
+		return err
+	}
+	return err
 }
 
 var _ = fs.NodeRequestLookuper(&Dir{})
@@ -462,11 +485,12 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			default:
 				//fmt.Printf("Case FILE %v \n", f.name)
 				child := &File{
-					name:      f.name,
-					mime:      f.mime,
-					path:      f.path,
-					container: d.container,
-					token:     d.token,
+					name:       f.name,
+					mime:       f.mime,
+					path:       f.path,
+					container:  d.container,
+					token:      d.token,
+					mountpoint: d.mountpoint,
 				}
 				return child, nil
 			}
@@ -532,12 +556,13 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 		a.Mode = 0644
 	}
 	t, _ := f.ReadFile()
+	f.content = []byte(t)
 	a.Size = uint64(len(t))
 	return nil
 }
 
 func (f *File) ReadFile() (string, error) {
-	cp_consoles_url := "https://codepicnic.com/api/consoles/" + f.container + "/" + f.name
+	cp_consoles_url := site + "/api/consoles/" + f.container + "/" + f.name
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+f.token)
@@ -558,7 +583,9 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	//if !req.Flags.IsReadOnly() {
 	//	return nil, fuse.Errno(syscall.EACCES)
 	//}
+	fmt.Printf("Open \n")
 	resp.Flags |= fuse.OpenKeepCache
+	f.writers++
 	return f, nil
 	//return &FileHandle{path: f.path}, nil
 }
@@ -572,6 +599,181 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	t, _ := f.ReadFile()
 	fuseutil.HandleRead(req, resp, []byte(t))
 	return nil
+}
+
+var _ = fs.HandleWriter(&File{})
+
+func (d *Dir) CreateDir(newdir string) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.container + "/create_folder"
+	cp_payload := ` { "path": "` + newdir + `" }`
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+func (d *Dir) CreateFile(newfile string) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.container + "/create_file"
+	cp_payload := ` { "path": "` + newfile + `" }`
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+func (f *File) UploadFile() (err error) {
+	cp_consoles_url := site + "/api/consoles/" + f.container + "/upload_file"
+	// Prepare a form that you will submit to that URL.
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+	// Add your image file
+	fmt.Printf("Upload %v \n", f.mountpoint+"/"+f.path)
+	fh, err := os.Open(f.mountpoint + "/" + f.path)
+	fmt.Printf("Open %v \n", f.mountpoint+"/"+f.path)
+	if err != nil {
+		fmt.Printf("Error 1 %v \n", err)
+		return err
+	}
+	defer fh.Close()
+	fw, err := w.CreateFormFile("file", f.mountpoint+"/"+f.path)
+	if err != nil {
+		fmt.Printf("Error 2 %v \n", err)
+		return err
+	}
+	if _, err = io.Copy(fw, fh); err != nil {
+		return
+	}
+	// Add the other fields
+	if fw, err = w.CreateFormField("path"); err != nil {
+		return
+	}
+	if _, err = fw.Write([]byte("/app/" + f.path)); err != nil {
+		return
+	}
+	// Don't forget to close the multipart writer.
+	// If you don't close it, your request will be missing the terminating boundary.
+	w.Close()
+
+	// Now that you have a form, you can submit it to your handler.
+	req, err := http.NewRequest("POST", cp_consoles_url, &b)
+	if err != nil {
+		fmt.Printf("Error 3 %v \n", err)
+		return err
+	}
+	// Don't forget to set the content type, this will contain the boundary.
+	req.Header.Set("Authorization", "Bearer "+f.token)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	// Submit the request
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Upload %v \n", res.StatusCode)
+	// Check the response
+	if res.StatusCode != http.StatusOK {
+		err = fmt.Errorf("bad status: %s", res.Status)
+	}
+	return
+}
+
+var _ = fs.NodeCreater(&Dir{})
+
+func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
+	fmt.Printf("Create \n")
+	f := &File{
+		container: d.container,
+		name:      req.Name,
+		path:      req.Name,
+		token:     d.token,
+		writers:   1,
+	}
+	d.CreateFile(req.Name)
+	return f, f, nil
+}
+
+const maxInt = int(^uint(0) >> 1)
+
+func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
+	fmt.Printf("Write \n")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// expand the buffer if necessary
+	newLen := req.Offset + int64(len(req.Data))
+	if newLen > int64(maxInt) {
+		return fuse.Errno(syscall.EFBIG)
+	}
+	if newLen := int(newLen); newLen > len(f.data) {
+		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
+	}
+
+	n := copy(f.data[req.Offset:], req.Data)
+	resp.Size = n
+	return nil
+}
+
+var _ = fs.HandleFlusher(&File{})
+
+func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
+	//fmt.Printf("Flush %v \n", req.Flags)
+
+	if f.writers == 0 {
+		// Read-only handles also get flushes. Make sure we don't
+		// overwrite valid file contents with a nil buffer.
+		fmt.Printf("Flush Read Only \n")
+		return nil
+	}
+
+	fmt.Printf("Flush Write \n")
+	return nil
+}
+
+var _ = fs.HandleReleaser(&File{})
+
+func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
+	fmt.Printf("Release %v \n", req.Flags)
+	if req.Flags.IsReadOnly() {
+		// we don't need to track read-only handles
+		//	return nil
+	}
+	f.writers--
+	//f.UploadFile()
+
+	return nil
+}
+
+var _ = fs.NodeMkdirer(&Dir{})
+
+func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
+	fmt.Printf("Mkdir %v %v \n", req.Name, d.path)
+	if d.path == "/" {
+		d.CreateDir(req.Name)
+	} else {
+		d.CreateDir(d.path + "/" + req.Name)
+	}
+	n := &Dir{
+		fs:   d.fs,
+		path: req.Name,
+	}
+	return n, nil
 }
 
 func main() {
@@ -659,7 +861,7 @@ func main() {
 					"ID | TITLE | CONTAINER NAME | CONTAINER TYPE | CREATED | URL",
 				}
 				for i := range consoles {
-					console_cols := strconv.Itoa(consoles[i].Id) + "|" + consoles[i].Title + "|" + consoles[i].ContainerName + "|" + consoles[i].ContainerType + "|" + consoles[i].CreatedAt + "|" + "http://codepicnic.com/consoles/" + consoles[i].Permalink
+					console_cols := strconv.Itoa(consoles[i].Id) + "|" + consoles[i].Title + "|" + consoles[i].ContainerName + "|" + consoles[i].ContainerType + "|" + consoles[i].CreatedAt + "|" + site + "/consoles/" + consoles[i].Permalink
 					output = append(output, console_cols)
 				}
 				result := columnize.SimpleFormat(output)
@@ -738,6 +940,10 @@ func main() {
 				access_token, _ := GetTokenAccess()
 				StartConsole(access_token, c.Args()[0])
 				MountConsole(access_token, c.Args()[0], c.Args()[1])
+				/*if err != nil {
+					fmt.Println("Error: ", err)
+					panic(err)
+				}*/
 				return nil
 			},
 		},
@@ -758,6 +964,16 @@ func main() {
 				access_token, _ := GetTokenAccess()
 				StartConsole(access_token, c.Args()[0])
 				//ReadFile(access_token, c.Args()[0], "")
+				return nil
+			},
+		},
+		{
+			Name:  "put",
+			Usage: "put contents to file",
+			Action: func(c *cli.Context) error {
+				access_token, _ := GetTokenAccess()
+				StartConsole(access_token, c.Args()[0])
+				//UploadFile(access_token, c.Args()[0], c.Args()[1], c.Args()[2])
 				return nil
 			},
 		},
