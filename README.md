@@ -7,4 +7,4 @@ On Ubuntu:
 ## Configuration (set credentials)
 
 
-    codepicnic-cli --configure 
+    codepicnic-cli configure 
