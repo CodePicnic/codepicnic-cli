@@ -38,7 +38,7 @@ const FragSeparator = ':'
 
 //const swarm_host = "tcp://52.200.53.168:4000"
 
-const swarm_host = "tcp://54.210.2.20:4000"
+const swarm_host = "tcp://54.88.32.109:4000"
 
 type Token struct {
 	Access  string `json:"access_token"`
