@@ -71,6 +71,8 @@ type ConsoleJson struct {
 	CustomImage   string `json:"custom_image"`
 	CreatedAt     string `json:"created_at"`
 	Permalink     string `json:"permalink"`
+	//Url           string `json:"url"`
+	//TerminalUrl   string `json:"terminal_url"`
 }
 
 type ConsoleCollection struct {
@@ -217,8 +219,12 @@ func ListConsoles(access_token string) []ConsoleJson {
 	//fmt.Println("response Status:", resp.Status)
 	//fmt.Printf("%+v\n", resp)
 	var console_collection ConsoleCollection
+	//var console_collection []ConsoleJson
 	body, err := ioutil.ReadAll(resp.Body)
-	_ = json.Unmarshal(body, &console_collection)
+	err = json.Unmarshal(body, &console_collection)
+	if err != nil {
+		fmt.Printf("%+v\n", err)
+	}
 	//_ = json.NewDecoder(resp.Body).Decode(&console_collection)
 	//fmt.Printf("%+v\n", string(body))
 	//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
@@ -428,8 +434,8 @@ func ListFiles(access_token string, container_name string, path string) []File {
 		jsonFile.path = child.Data().(string)
 		jsonFile.mime = jsonTypes[key].Data().(string)
 		FileCollection = append(FileCollection, jsonFile)
-		//fmt.Printf("key: %v, value: %v, type: %v\n", key, child.Data().(string), jsonTypes[key])
-		//fmt.Printf("key: %v, value: %v, type: %v\n", jsonFile.name, jsonFile.path, jsonFile.mime)
+		fmt.Printf("key: %v, value: %v, type: %v\n", key, child.Data().(string), jsonTypes[key])
+		fmt.Printf("key: %v, value: %v, type: %v\n", jsonFile.name, jsonFile.path, jsonFile.mime)
 
 	}
 	//for key, child := range jsonTypes {
@@ -442,18 +448,48 @@ func ListFiles(access_token string, container_name string, path string) []File {
 }
 
 func MountConsole(access_token string, container_name string, mount_dir string) error {
-	mp, err := fuse.Mount(mount_dir + "/" + container_name)
+	fmt.Println("Mount")
+	mp, err := fuse.Mount(mount_dir+"/"+container_name, fuse.MaxReadahead(32*1024*1024),
+		fuse.AsyncRead())
 	if err != nil {
 		fmt.Printf("serve err %v", err)
 		return err
 	}
 	defer mp.Close()
+	fmt.Println("Filesys")
 	filesys := &FS{
 		token:      access_token,
 		container:  container_name,
 		mountpoint: mount_dir + "/" + container_name,
 	}
-	err = fs.Serve(mp, filesys)
+	fmt.Println("Serve")
+	srv := fs.New(mp, &fs.Config{})
+
+	serveErr := make(chan error, 1)
+
+	go func() {
+		defer mp.Close()
+		//serveErr <- fs.Serve(mp, filesys)
+		serveErr <- srv.Serve(filesys)
+	}()
+	fmt.Printf("serve err %v", serveErr)
+
+	select {
+	case <-mp.Ready:
+		fmt.Println("Ready")
+		if err := mp.MountError; err != nil {
+			return fmt.Errorf("mount fail (delayed): %v", err)
+		}
+		return nil
+	case err := <-serveErr:
+		// Serve quit early
+		if err != nil {
+			return fmt.Errorf("filesystem failure: %v", err)
+		}
+		return errors.New("Serve exited early")
+	}
+
+	/*err = fs.Serve(mp, filesys)
 	if err != nil {
 		fmt.Printf("serve err %v", err)
 		return err
@@ -462,7 +498,7 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 		fmt.Printf("serve err %v", err)
 		return err
 	}
-	return err
+	return err*/
 }
 
 var _ = fs.NodeRequestLookuper(&Dir{})
@@ -483,11 +519,12 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				}
 				return child, nil
 			default:
-				//fmt.Printf("Case FILE %v \n", f.name)
+				fmt.Printf("Case FILE %v \n", f.name)
+				fmt.Printf("Case FILE paht %v \n", f.path)
 				child := &File{
-					name:       f.name,
-					mime:       f.mime,
-					path:       f.path,
+					name: f.name,
+					mime: f.mime,
+					//path:       f.path,
 					container:  d.container,
 					token:      d.token,
 					mountpoint: d.mountpoint,
@@ -643,27 +680,34 @@ func (f *File) UploadFile() (err error) {
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
 	// Add your image file
-	fmt.Printf("Upload %v \n", f.mountpoint+"/"+f.path)
-	fh, err := os.Open(f.mountpoint + "/" + f.path)
-	fmt.Printf("Open %v \n", f.mountpoint+"/"+f.path)
+	fmt.Printf("Upload Path %v \n", f.path)
+	fmt.Printf("Upload Name %v \n", f.name)
+	//fh, err := os.Open(f.mountpoint + "/" + f.path)
+	//fmt.Printf("Open %v \n", f.mountpoint+"/"+f.path)
+	//if err != nil {
+	//	fmt.Printf("Error 1 %v \n", err)
+	//	return err
+	//}
+	//defer fh.Close()
+	temp_file, err := ioutil.TempFile(os.TempDir(), "cp_")
+	err = ioutil.WriteFile(temp_file.Name(), f.data, 0644)
 	if err != nil {
-		fmt.Printf("Error 1 %v \n", err)
+		fmt.Printf("Error writint temp %v", err)
 		return err
 	}
-	defer fh.Close()
-	fw, err := w.CreateFormFile("file", f.mountpoint+"/"+f.path)
+	fw, err := w.CreateFormFile("file", temp_file.Name())
 	if err != nil {
 		fmt.Printf("Error 2 %v \n", err)
 		return err
 	}
-	if _, err = io.Copy(fw, fh); err != nil {
+	if _, err = io.Copy(fw, temp_file); err != nil {
 		return
 	}
 	// Add the other fields
 	if fw, err = w.CreateFormField("path"); err != nil {
 		return
 	}
-	if _, err = fw.Write([]byte("/app/" + f.path)); err != nil {
+	if _, err = fw.Write([]byte("/app/" + f.path + "/" + f.name)); err != nil {
 		return
 	}
 	// Don't forget to close the multipart writer.
@@ -691,21 +735,30 @@ func (f *File) UploadFile() (err error) {
 	if res.StatusCode != http.StatusOK {
 		err = fmt.Errorf("bad status: %s", res.Status)
 	}
+	// Delete the resources we created
+	err = os.Remove(temp_file.Name())
+	if err != nil {
+		log.Fatal(err)
+	}
 	return
 }
 
 var _ = fs.NodeCreater(&Dir{})
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	fmt.Printf("Create \n")
+	fmt.Printf("Create %v %v \n", req.Name, d.path)
 	f := &File{
 		container: d.container,
 		name:      req.Name,
-		path:      req.Name,
+		path:      d.path,
 		token:     d.token,
 		writers:   1,
 	}
-	d.CreateFile(req.Name)
+	if d.path == "/" {
+		d.CreateFile(req.Name)
+	} else {
+		d.CreateFile(d.path + "/" + req.Name)
+	}
 	return f, f, nil
 }
 
@@ -743,6 +796,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	}
 
 	fmt.Printf("Flush Write \n")
+	f.UploadFile()
 	return nil
 }
 
@@ -770,8 +824,10 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		d.CreateDir(d.path + "/" + req.Name)
 	}
 	n := &Dir{
-		fs:   d.fs,
-		path: req.Name,
+		fs:        d.fs,
+		path:      req.Name,
+		container: d.container,
+		token:     d.token,
 	}
 	return n, nil
 }
