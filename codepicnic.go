@@ -35,14 +35,19 @@ import (
 
 //const site = "https://codepicnic.com"
 
-const site = "https://codeground.xyz"
 const FragSeparator = ':'
 const cfg_dir = ".codepicnic"
 const cfg_file = "config"
 
+var version string
+var site string
+var swarm_host string
+
+//const site = "https://codeground.xyz"
+
 //const swarm_host = "tcp://52.200.53.168:4000"
 
-const swarm_host = "tcp://54.88.32.109:4000"
+//const swarm_host = "tcp://54.88.32.109:4000"
 
 var debug = true
 
@@ -1012,7 +1017,8 @@ func CmdRestartConsole(console string) error {
 }
 func main() {
 	app := cli.NewApp()
-	app.Version = "0.11"
+	//app.Version = "0.11"
+	app.Version = version
 	app.Name = "codepicnic"
 	app.Usage = "A CLI tool to manage your CodePicnic consoles"
 	var container_size, container_type, title, hostname, current_mode string
