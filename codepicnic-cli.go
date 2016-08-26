@@ -37,6 +37,8 @@ import (
 
 const site = "https://codeground.xyz"
 const FragSeparator = ':'
+const cfg_dir = ".codepicnic"
+const cfg_file = "config"
 
 //const swarm_host = "tcp://52.200.53.168:4000"
 
@@ -93,9 +95,8 @@ func Debug(print string, values ...string) error {
 }
 
 func CreateConfigDir() {
-	config_dir := getHomeDir() + string(filepath.Separator) + ".codepicnic"
-	config_file := config_dir + string(filepath.Separator) + "credentials"
-	data_file := config_dir + string(filepath.Separator) + "codepicnic.json"
+	config_dir := getHomeDir() + string(filepath.Separator) + cfg_dir
+	config_file := config_dir + string(filepath.Separator) + cfg_file
 	os.Mkdir(config_dir, 0755)
 	if _, err := os.Stat(config_file); os.IsNotExist(err) {
 		f, err := os.Create(config_file)
@@ -104,35 +105,27 @@ func CreateConfigDir() {
 		}
 		f.Close()
 	}
-	if _, err := os.Stat(data_file); os.IsNotExist(err) {
-		f, err := os.Create(data_file)
-		if err != nil {
-			panic(err)
-		}
-		f.Close()
-	}
 }
 
 func GetCredentialsFromFile() (client_id string, client_secret string) {
-	cfg, err := ini.Load(getHomeDir() + "/.codepicnic/credentials")
+	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
 		panic(err)
 	}
-	client_id = cfg.Section("").Key("client_id").String()
-	client_secret = cfg.Section("").Key("client_secret").String()
+	client_id = cfg.Section("credentials").Key("client_id").String()
+	client_secret = cfg.Section("credentials").Key("client_secret").String()
 	return
 
 }
 func SaveCredentialsToFile(client_id string, client_secret string) {
-
-	cfg, err := ini.Load(getHomeDir() + "/.codepicnic/credentials")
+	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
 		panic(err)
 	}
-	cfg.Section("").Key("client_id").SetValue(client_id)
-	cfg.Section("").Key("client_secret").SetValue(client_secret)
+	cfg.Section("credentials").Key("client_id").SetValue(client_id)
+	cfg.Section("credentials").Key("client_secret").SetValue(client_secret)
 	//fmt.Println(getHomeDir() + "/.codepicnic/credentials")
-	err = cfg.SaveTo(getHomeDir() + "/.codepicnic/credentials")
+	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 
 	if err != nil {
 		panic(err)
@@ -143,12 +136,12 @@ func SaveCredentialsToFile(client_id string, client_secret string) {
 
 func SaveMountsToFile(container string, mountpoint string) {
 
-	cfg, err := ini.Load(getHomeDir() + "/.codepicnic/credentials")
+	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
 		panic(err)
 	}
 	cfg.Section("mounts").Key(container).SetValue(mountpoint)
-	err = cfg.SaveTo(getHomeDir() + "/.codepicnic/credentials")
+	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 
 	if err != nil {
 		panic(err)
@@ -158,7 +151,7 @@ func SaveMountsToFile(container string, mountpoint string) {
 }
 
 func GetMountsFromFile(container string) string {
-	cfg, err := ini.Load(getHomeDir() + "/.codepicnic/credentials")
+	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
 		panic(err)
 	}
@@ -169,13 +162,12 @@ func GetMountsFromFile(container string) string {
 
 func SaveTokenToFile(access_token string) {
 
-	cfg, err := ini.Load(getHomeDir() + "/.codepicnic/credentials")
+	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
 		panic(err)
 	}
-	cfg.Section("").Key("access_token").SetValue(access_token)
-	//fmt.Println(getHomeDir() + "/.codepicnic/credentials")
-	err = cfg.SaveTo(getHomeDir() + "/.codepicnic/credentials")
+	cfg.Section("credentials").Key("access_token").SetValue(access_token)
+	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 
 	if err != nil {
 		panic(err)
@@ -507,7 +499,8 @@ func ListFiles(access_token string, container_name string, path string) []File {
 	return FileCollection
 }
 
-func UnmountConsole(access_token string, container_name string, mount_dir string) error {
+//func UnmountConsole(access_token string, container_name string, mount_dir string) error {
+func UnmountConsole(access_token string, container_name string) error {
 	mountpoint := GetMountsFromFile(container_name)
 	fuse.Unmount(mountpoint)
 	return nil
@@ -1019,8 +1012,8 @@ func CmdRestartConsole(console string) error {
 }
 func main() {
 	app := cli.NewApp()
-	app.Version = "0.1.0"
-	app.Name = "codepicnic-cli"
+	app.Version = "0.11"
+	app.Name = "codepicnic"
 	app.Usage = "A CLI tool to manage your CodePicnic consoles"
 	var container_size, container_type, title, hostname, current_mode string
 
@@ -1046,6 +1039,8 @@ func main() {
 				CmdRestartConsole(inputArgs[1])
 			case "connect":
 				CmdConnectConsole(inputArgs[1])
+			case "help":
+				cli.ShowAppHelp(c)
 			case "exit":
 				fmt.Println("Bye!")
 				panic(err)
@@ -1220,7 +1215,7 @@ func main() {
 			Usage: "unmount /app filesystem from a container",
 			Action: func(c *cli.Context) error {
 				access_token, _ := GetTokenAccess()
-				UnmountConsole(access_token, c.Args()[0], c.Args()[1])
+				UnmountConsole(access_token, c.Args()[0])
 				/*if err != nil {
 					fmt.Println("Error: ", err)
 					panic(err)
@@ -1228,36 +1223,37 @@ func main() {
 				return nil
 			},
 		},
-		{
-			Name:  "files",
-			Usage: "list files from a container",
-			Action: func(c *cli.Context) error {
-				access_token, _ := GetTokenAccess()
-				StartConsole(access_token, c.Args()[0])
-				ListFiles(access_token, c.Args()[0], "")
-				return nil
+		/*
+			{
+				Name:  "files",
+				Usage: "list files from a container",
+				Action: func(c *cli.Context) error {
+					access_token, _ := GetTokenAccess()
+					StartConsole(access_token, c.Args()[0])
+					ListFiles(access_token, c.Args()[0], "")
+					return nil
+				},
 			},
-		},
-		{
-			Name:  "cat",
-			Usage: "cat contents from file",
-			Action: func(c *cli.Context) error {
-				access_token, _ := GetTokenAccess()
-				StartConsole(access_token, c.Args()[0])
-				//ReadFile(access_token, c.Args()[0], "")
-				return nil
+			{
+				Name:  "cat",
+				Usage: "cat contents from file",
+				Action: func(c *cli.Context) error {
+					access_token, _ := GetTokenAccess()
+					StartConsole(access_token, c.Args()[0])
+					//ReadFile(access_token, c.Args()[0], "")
+					return nil
+				},
 			},
-		},
-		{
-			Name:  "put",
-			Usage: "put contents to file",
-			Action: func(c *cli.Context) error {
-				access_token, _ := GetTokenAccess()
-				StartConsole(access_token, c.Args()[0])
-				//UploadFile(access_token, c.Args()[0], c.Args()[1], c.Args()[2])
-				return nil
-			},
-		},
+			{
+				Name:  "put",
+				Usage: "put contents to file",
+				Action: func(c *cli.Context) error {
+					access_token, _ := GetTokenAccess()
+					StartConsole(access_token, c.Args()[0])
+					//UploadFile(access_token, c.Args()[0], c.Args()[1], c.Args()[2])
+					return nil
+				},
+			},*/
 	}
 	app.Run(os.Args)
 }
