@@ -236,14 +236,13 @@ Content-Type: application/json; charset=utf-8
 
 */
 
-func CreateConsole(access_token string, console_extra ConsoleExtra) string {
+func CreateConsole(access_token string, console_extra ConsoleExtra) (string, string) {
 
 	cp_consoles_url := site + "/api/consoles"
 
 	//cp_payload := `{ "console:    { "grant_type": "client_credentials","client_id": "` + client_id + `", "client_secret": "` + client_secret + `"}`
 	cp_payload := ` { "console": { "container_size": "` + console_extra.Size + `", "container_type": "` + console_extra.Type + `", "title": "` + console_extra.Title + `" , "hostname": "` + console_extra.Hostname + `", "current_mode": "` + console_extra.Mode + `" }  }`
 	var jsonStr = []byte(cp_payload)
-
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
@@ -255,7 +254,7 @@ func CreateConsole(access_token string, console_extra ConsoleExtra) string {
 	defer resp.Body.Close()
 	var console Console
 	_ = json.NewDecoder(resp.Body).Decode(&console)
-	return console.ContainerName
+	return console.ContainerName, console.Url
 }
 
 func ListConsoles(access_token string) []ConsoleJson {
@@ -1015,6 +1014,37 @@ func CmdRestartConsole(console string) error {
 	RestartConsole(access_token, console)
 	return nil
 }
+func CmdCreateConsole() error {
+	access_token, _ := GetTokenAccess()
+	var console ConsoleExtra
+	container_type := "bash"
+	title := ""
+	reader_type := bufio.NewReader(os.Stdin)
+	fmt.Print("Type?(bash,ruby,python ... )[bash]: ")
+	input, _ := reader_type.ReadString('\n')
+	container_type = strings.TrimRight(input, "\r\n")
+	//reader_size := bufio.NewReader(os.Stdin)
+	//fmt.Print("Size?(medium,large,xlarge,xxlarge)[medium]: ")
+	//input, _ = reader_size.ReadString('\n')
+	//container_size = strings.TrimRight(input, "\r\n")
+	reader_title := bufio.NewReader(os.Stdin)
+	fmt.Print("Title?[]: ")
+	input, _ = reader_title.ReadString('\n')
+	title = strings.TrimRight(input, "\r\n")
+	if container_type == "" {
+		fmt.Println("type")
+		container_type = "bash"
+	}
+	console.Size = "medium"
+	console.Mode = "draft"
+	console.Type = container_type
+	console.Title = title
+	fmt.Printf("Creating console ...")
+	container_name, console_url := CreateConsole(access_token, console)
+	fmt.Printf("done. * %s \n", container_name)
+	fmt.Printf("%s \n", console_url)
+	return nil
+}
 func main() {
 	app := cli.NewApp()
 	//app.Version = "0.11"
@@ -1035,7 +1065,7 @@ func main() {
 			inputArgs := strings.Fields(input)
 
 			switch inputArgs[0] {
-			case "list":
+			case "list", "ls":
 				CmdListConsoles()
 			case "stop":
 				CmdStopConsole(inputArgs[1])
@@ -1045,6 +1075,8 @@ func main() {
 				CmdRestartConsole(inputArgs[1])
 			case "connect":
 				CmdConnectConsole(inputArgs[1])
+			case "create":
+				CmdCreateConsole()
 			case "help":
 				cli.ShowAppHelp(c)
 			case "exit":
@@ -1114,14 +1146,32 @@ func main() {
 				}
 				var console ConsoleExtra
 
+				if c.NumFlags() == 0 {
+
+					reader_type := bufio.NewReader(os.Stdin)
+					fmt.Print("Type?(bash,ruby,python ... )[bash]: ")
+					input, _ := reader_type.ReadString('\n')
+					container_type = strings.TrimRight(input, "\r\n")
+					reader_title := bufio.NewReader(os.Stdin)
+					fmt.Print("Title?[]: ")
+					input, _ = reader_title.ReadString('\n')
+					title = strings.TrimRight(input, "\r\n")
+					if container_type == "" {
+						fmt.Println("type")
+						container_type = "bash"
+					}
+
+				}
 				console.Size = container_size
 				console.Type = container_type
 				console.Title = title
 				console.Hostname = hostname
 				console.Mode = current_mode
 
-				container_name := CreateConsole(access_token, console)
-				fmt.Println(container_name)
+				fmt.Printf("Creating console ...")
+				container_name, console_url := CreateConsole(access_token, console)
+				fmt.Printf("done. * %s \n", container_name)
+				fmt.Printf("%s \n", console_url)
 				return nil
 			},
 		},
