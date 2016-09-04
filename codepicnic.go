@@ -421,6 +421,8 @@ func ConnectConsole(access_token string, container_name string) {
 }
 
 type FS struct {
+	fuse       *fs.Server
+	conn       *fuse.Conn
 	container  string
 	token      string
 	file       *File
@@ -509,9 +511,22 @@ func UnmountConsole(access_token string, container_name string) error {
 	fuse.Unmount(mountpoint)
 	return nil
 }
+func debugLog(msg interface{}) {
+	fmt.Printf("%s", msg)
+}
 func MountConsole(access_token string, container_name string, mount_dir string) error {
-	os.Mkdir(mount_dir+"/"+container_name, 0755)
-	mp, err := fuse.Mount(mount_dir+"/"+container_name, fuse.MaxReadahead(32*1024*1024),
+	var mount_point string
+	//var wg sync.WaitGroup
+
+	if mount_dir == "" {
+		mount_point = container_name
+		os.Mkdir(container_name, 0755)
+	} else {
+		mount_point = mount_dir + "/" + container_name
+		os.Mkdir(mount_dir+"/"+container_name, 0755)
+	}
+	Debug("MountPoint", mount_point)
+	mp, err := fuse.Mount(mount_point, fuse.MaxReadahead(32*1024*1024),
 		fuse.AsyncRead(), fuse.WritebackCache())
 	if err != nil {
 		fmt.Printf("serve err %v", err)
@@ -521,7 +536,7 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	filesys := &FS{
 		token:      access_token,
 		container:  container_name,
-		mountpoint: mount_dir + "/" + container_name,
+		mountpoint: mount_point,
 	}
 	Debug("Serve", "")
 	//cptab := make(map[string]string)
@@ -534,36 +549,55 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	}
 	//jsonCPTab, _ := json.Marshal(cptab)
 	SaveMountsToFile(container_name, mountpoint)
-
-	srv := fs.New(mp, &fs.Config{})
+	cfg := &fs.Config{
+		WithContext: func(ctx context.Context, req fuse.Request) context.Context {
+			return ctx
+		},
+	}
+	cfg.Debug = debugLog
+	//srv := fs.New(mp, cfg)
 
 	serveErr := make(chan error, 1)
-
+	fmt.Printf("/app directory mounted on %s \n", mountpoint)
 	//go func() {
-	defer mp.Close()
+	//defer wg.Done()
+	//defer mp.Close()
 	//serveErr <- fs.Serve(mp, filesys)
-	serveErr <- srv.Serve(filesys)
-	//}()
-	fmt.Printf("serve err %v", serveErr)
-
-	select {
-	case <-mp.Ready:
-		fmt.Println("Ready")
-		if err := mp.MountError; err != nil {
-			return fmt.Errorf("mount fail (delayed): %v", err)
-		}
-		return nil
-	case err := <-serveErr:
-		// Serve quit early
-		if err != nil {
-			return fmt.Errorf("filesystem failure: %v", err)
-		}
-		return errors.New("Serve exited early")
-	default:
-		Debug("FUSE", "")
-		return nil
+	//serveErr <- srv.Serve(filesys)
+	err = fs.Serve(mp, filesys)
+	closeErr := mp.Close()
+	if err == nil {
+		err = closeErr
 	}
-
+	serveErr <- err
+	////}()
+	//fmt.Printf("serve err %v", serveErr)
+	//if serveErr == nil {
+	//	Debug("Error", "NO")
+	//}
+	/*
+		select {
+		case <-mp.Ready:
+			fmt.Printf("Ready %v\n", mp)
+			if err := mp.MountError; err != nil {
+				return fmt.Errorf("mount fail (delayed): %v", err)
+			}
+			return nil
+		case err := <-serveErr:
+			// Serve quit early
+			if err != nil {
+				return fmt.Errorf("filesystem failure: %v", err)
+			}
+			return errors.New("Serve exited early")
+			//default:
+			//	Debug("FUSE", "")
+			//	return nil
+		}
+	*/
+	<-mp.Ready
+	if err := mp.MountError; err != nil {
+		return err
+	}
 	/*err = fs.Serve(mp, filesys)
 	if err != nil {
 		fmt.Printf("serve err %v", err)
@@ -572,8 +606,8 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	if err := mp.MountError; err != nil {
 		fmt.Printf("serve err %v", err)
 		return err
-	}
-	return err*/
+	}*/
+	return err
 }
 
 var _ = fs.NodeRequestLookuper(&Dir{})
@@ -888,12 +922,6 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	}
 
 	Debug("Flush Write", "")
-	if strings.HasSuffix(f.name, ".xxxx") {
-		return nil
-	}
-	if strings.HasSuffix(f.name, ".swpx") {
-		return nil
-	}
 	f.UploadFile()
 	return nil
 }
@@ -1245,6 +1273,7 @@ func main() {
 				return nil
 			},
 		},
+
 		{
 			Name:  "mount",
 			Usage: "mount /app filesystem from a container",
@@ -1258,7 +1287,16 @@ func main() {
 			Action: func(c *cli.Context) error {
 				access_token, _ := GetTokenAccess()
 				StartConsole(access_token, c.Args()[0])
-				MountConsole(access_token, c.Args()[0], c.Args()[1])
+				var mount_point string
+				if len(c.Args()) > 1 {
+					mount_point = c.Args()[1]
+				} else {
+					mount_point = ""
+				}
+				Debug("MountPonit", mount_point)
+				fmt.Printf("Mounting /app directory ... \n")
+				fmt.Printf("TIP: If you want to mount in the background please add \"&\" at the end of the mount command. \n")
+				MountConsole(access_token, c.Args()[0], mount_point)
 				/*if err != nil {
 					fmt.Println("Error: ", err)
 					panic(err)
