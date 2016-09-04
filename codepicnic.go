@@ -20,6 +20,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/user"
 	"strconv"
 	"strings"
@@ -30,6 +31,7 @@ import (
 	"bazil.org/fuse/fuseutil"
 	"github.com/Jeffail/gabs"
 	"path/filepath"
+	"runtime"
 	"syscall"
 )
 
@@ -91,6 +93,34 @@ type ConsoleCollection struct {
 }
 
 const CodepicnicAuthServer = "http://127.0.0.1:4001"
+
+var clear map[string]func()
+
+func init() {
+	clear = make(map[string]func())
+	clear["linux"] = func() {
+		cmd := exec.Command("clear")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+	clear["windows"] = func() {
+		cmd := exec.Command("cls")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+	clear["darwin"] = func() {
+		cmd := exec.Command("clear")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+}
+
+func ClearScreen() {
+	value, ok := clear[runtime.GOOS]
+	if ok {
+		value()
+	}
+}
 
 func Debug(print string, values ...string) error {
 	if debug {
@@ -1026,6 +1056,10 @@ func CmdStopConsole(console string) error {
 	StopConsole(access_token, console)
 	return nil
 }
+func CmdClearScreen() error {
+	ClearScreen()
+	return nil
+}
 func CmdStartConsole(console string) error {
 	access_token, _ := GetTokenAccess()
 	StartConsole(access_token, console)
@@ -1085,7 +1119,6 @@ func main() {
 
 		in := bufio.NewReader(os.Stdin)
 		input := ""
-		fmt.Println("Welcome to CodePicnic. To see available commands enter help")
 		for input != "." {
 			fmt.Print("CodePicnic> ")
 			input, err := in.ReadString('\n')
@@ -1095,6 +1128,8 @@ func main() {
 			switch inputArgs[0] {
 			case "list", "ls":
 				CmdListConsoles()
+			case "clear", "cls":
+				CmdClearScreen()
 			case "stop":
 				CmdStopConsole(inputArgs[1])
 			case "start":
@@ -1213,6 +1248,15 @@ func main() {
 			},
 		},
 		{
+			Name:    "clear",
+			Aliases: []string{"cls"},
+			Usage:   "clear screen",
+			Action: func(c *cli.Context) error {
+				ClearScreen()
+				return nil
+			},
+		},
+		{
 			Name:  "stop",
 			Usage: "stop a console",
 			Action: func(c *cli.Context) error {
@@ -1314,6 +1358,15 @@ func main() {
 					fmt.Println("Error: ", err)
 					panic(err)
 				}*/
+				return nil
+			},
+		},
+		{
+			Name:  "exit",
+			Usage: "exit the REPL",
+			Action: func(c *cli.Context) error {
+				fmt.Println("Bye!")
+				panic(nil)
 				return nil
 			},
 		},
