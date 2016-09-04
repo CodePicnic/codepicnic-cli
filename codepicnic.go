@@ -44,6 +44,7 @@ const cfg_file = "config"
 var version string
 var site string
 var swarm_host string
+var format string
 
 //const site = "https://codeground.xyz"
 
@@ -145,13 +146,14 @@ func CreateConfigDir() {
 func GetCredentialsFromFile() (client_id string, client_secret string) {
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
-		panic(err)
+		return
 	}
 	client_id = cfg.Section("credentials").Key("client_id").String()
 	client_secret = cfg.Section("credentials").Key("client_secret").String()
 	return
 
 }
+
 func SaveCredentialsToFile(client_id string, client_secret string) {
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
@@ -224,6 +226,9 @@ func getHomeDir() string {
 
 func GetTokenAccess() (string, error) {
 	client_id, client_secret := GetCredentialsFromFile()
+	if client_id == "" || client_secret == "" {
+		return "", nil
+	}
 	access_token, err := GetTokenAccessFromCredentials(client_id, client_secret)
 	return access_token, err
 }
@@ -301,7 +306,6 @@ func ListConsoles(access_token string) []ConsoleJson {
 	}
 	defer resp.Body.Close()
 	//fmt.Println("response Status:", resp.Status)
-	//fmt.Printf("%+v\n", resp)
 	var console_collection ConsoleCollection
 	//var console_collection []ConsoleJson
 	body, err := ioutil.ReadAll(resp.Body)
@@ -313,6 +317,25 @@ func ListConsoles(access_token string) []ConsoleJson {
 	//fmt.Printf("%+v\n", string(body))
 	//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
 	return console_collection.Consoles
+}
+func JsonListConsoles(access_token string) string {
+
+	cp_consoles_url := site + "/api/consoles/all"
+	req, err := http.NewRequest("GET", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("%+v\n", err)
+	}
+	//fmt.Printf("%+v\n", string(body))
+	return string(body)
 }
 
 func StopConsole(access_token string, container_name string) {
@@ -1030,30 +1053,71 @@ func addNewCommand(repl *replizer.Repl, instr string, startFn replizer.CommandSt
 func CmdListConsoles() error {
 
 	access_token, err := GetTokenAccess()
+	if access_token == "" {
+		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+		CmdConfigure()
+		return nil
+	}
 	SaveTokenToFile(access_token)
 	if err != nil {
 		fmt.Println("Error: ", err)
 		panic(err)
 	}
 
-	consoles := ListConsoles(access_token)
 	//fmt.Printf("%#v\n", consoles[0].Title)
+	if format == "json" {
+		consoles := JsonListConsoles(access_token)
+		//json_consoles, _ := json.MarshalIndent(consoles, "", "    ")
+		fmt.Println(string(consoles))
 
-	output := []string{
-		"ID | TITLE | CONTAINER NAME | CONTAINER TYPE | CREATED | URL",
+	} else {
+
+		consoles := ListConsoles(access_token)
+		output := []string{
+			"ID | TITLE | CONTAINER NAME | CONTAINER TYPE | CREATED | URL",
+		}
+		for i := range consoles {
+			console_cols := strconv.Itoa(consoles[i].Id) + "|" + consoles[i].Title + "|" + consoles[i].ContainerName + "|" + consoles[i].ContainerType + "|" + consoles[i].CreatedAt + "|" + site + "/consoles/" + consoles[i].Permalink
+			output = append(output, console_cols)
+		}
+		result := columnize.SimpleFormat(output)
+		fmt.Println(result)
 	}
-	for i := range consoles {
-		console_cols := strconv.Itoa(consoles[i].Id) + "|" + consoles[i].Title + "|" + consoles[i].ContainerName + "|" + consoles[i].ContainerType + "|" + consoles[i].CreatedAt + "|" + site + "/consoles/" + consoles[i].Permalink
-		output = append(output, console_cols)
-	}
-	result := columnize.SimpleFormat(output)
-	fmt.Println(result)
 	return nil
 }
 
 func CmdStopConsole(console string) error {
 	access_token, _ := GetTokenAccess()
+	if access_token == "" {
+		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+		CmdConfigure()
+		return nil
+	}
 	StopConsole(access_token, console)
+	return nil
+}
+func CmdConfigure() error {
+	CreateConfigDir()
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf("Get your API Key from %s/dashboard/profile \n", site)
+	fmt.Print("Client ID: ")
+	input_id, _ := reader.ReadString('\n')
+	reader_secret := bufio.NewReader(os.Stdin)
+	fmt.Print("Client Secret: ")
+	input_secret, _ := reader_secret.ReadString('\n')
+	fmt.Print("Please wait, testing credentials... ")
+	client_id := strings.Trim(input_id, "\n")
+	client_secret := strings.Trim(input_secret, "\n")
+	access_token, err := GetTokenAccessFromCredentials(client_id, client_secret)
+	if err != nil {
+		fmt.Println("Error: ", err)
+		return nil
+	}
+	fmt.Println("Token: ", access_token)
+	fmt.Print("Please wait, saving credentials... ")
+	SaveCredentialsToFile(client_id, client_secret)
+	SaveTokenToFile(access_token)
+	fmt.Println("Credentials saved \n")
 	return nil
 }
 func CmdClearScreen() error {
@@ -1062,22 +1126,42 @@ func CmdClearScreen() error {
 }
 func CmdStartConsole(console string) error {
 	access_token, _ := GetTokenAccess()
+	if access_token == "" {
+		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+		CmdConfigure()
+		return nil
+	}
 	StartConsole(access_token, console)
 	return nil
 }
 func CmdConnectConsole(console string) error {
 	access_token, _ := GetTokenAccess()
+	if access_token == "" {
+		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+		CmdConfigure()
+		return nil
+	}
 	StartConsole(access_token, console)
 	ConnectConsole(access_token, console)
 	return nil
 }
 func CmdRestartConsole(console string) error {
 	access_token, _ := GetTokenAccess()
+	if access_token == "" {
+		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+		CmdConfigure()
+		return nil
+	}
 	RestartConsole(access_token, console)
 	return nil
 }
 func CmdCreateConsole() error {
 	access_token, _ := GetTokenAccess()
+	if access_token == "" {
+		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+		CmdConfigure()
+		return nil
+	}
 	var console ConsoleExtra
 	container_type := "bash"
 	title := ""
@@ -1127,6 +1211,13 @@ func main() {
 
 			switch inputArgs[0] {
 			case "list", "ls":
+				if len(inputArgs) > 1 {
+					if inputArgs[2] == "json" {
+						format = "json"
+					} else {
+						format = "text"
+					}
+				}
 				CmdListConsoles()
 			case "clear", "cls":
 				CmdClearScreen()
@@ -1140,6 +1231,8 @@ func main() {
 				CmdConnectConsole(inputArgs[1])
 			case "create":
 				CmdCreateConsole()
+			case "configure":
+				CmdConfigure()
 			case "help":
 				cli.ShowAppHelp(c)
 			case "exit":
@@ -1204,6 +1297,11 @@ func main() {
 
 			Action: func(c *cli.Context) error {
 				access_token, err := GetTokenAccess()
+				if access_token == "" {
+					fmt.Printf("It looks like you didn't authorize your credentials. \n")
+					CmdConfigure()
+					return nil
+				}
 				if err != nil {
 					fmt.Println("Error: ", err)
 				}
@@ -1242,6 +1340,14 @@ func main() {
 			Name:    "list",
 			Aliases: []string{"ls"},
 			Usage:   "list consoles",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:        "format",
+					Value:       "text",
+					Usage:       "Output format: text, json",
+					Destination: &format,
+				},
+			},
 			Action: func(c *cli.Context) error {
 				CmdListConsoles()
 				return nil
@@ -1284,27 +1390,7 @@ func main() {
 			Name:  "configure",
 			Usage: "save configuration",
 			Action: func(c *cli.Context) error {
-				CreateConfigDir()
-				reader := bufio.NewReader(os.Stdin)
-				fmt.Printf("Get your API Key from %s/dashboard/profile \n", site)
-				fmt.Print("Client ID: ")
-				input_id, _ := reader.ReadString('\n')
-				reader_secret := bufio.NewReader(os.Stdin)
-				fmt.Print("Client Secret: ")
-				input_secret, _ := reader_secret.ReadString('\n')
-				fmt.Print("Please wait, testing credentials... ")
-				client_id := strings.Trim(input_id, "\n")
-				client_secret := strings.Trim(input_secret, "\n")
-				access_token, err := GetTokenAccessFromCredentials(client_id, client_secret)
-				if err != nil {
-					fmt.Println("Error: ", err)
-					panic(err)
-				}
-				fmt.Println("Token: ", access_token)
-				fmt.Print("Please wait, saving credentials... ")
-				SaveCredentialsToFile(client_id, client_secret)
-				SaveTokenToFile(access_token)
-				fmt.Println("Credentials saved \n")
+				CmdConfigure()
 				return nil
 			},
 		},
@@ -1330,6 +1416,11 @@ func main() {
 			},
 			Action: func(c *cli.Context) error {
 				access_token, _ := GetTokenAccess()
+				if access_token == "" {
+					fmt.Printf("It looks like you didn't authorize your credentials. \n")
+					CmdConfigure()
+					return nil
+				}
 				StartConsole(access_token, c.Args()[0])
 				var mount_point string
 				if len(c.Args()) > 1 {
@@ -1353,6 +1444,11 @@ func main() {
 			Usage: "unmount /app filesystem from a container",
 			Action: func(c *cli.Context) error {
 				access_token, _ := GetTokenAccess()
+				if access_token == "" {
+					fmt.Printf("It looks like you didn't authorize your credentials. \n")
+					CmdConfigure()
+					return nil
+				}
 				UnmountConsole(access_token, c.Args()[0])
 				/*if err != nil {
 					fmt.Println("Error: ", err)
