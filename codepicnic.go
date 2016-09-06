@@ -517,6 +517,7 @@ type File struct {
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	//fmt.Printf("Dir Attr %s \n", d.path)
+	Debug("Dir Attr", d.path)
 	a.Mode = os.ModeDir | 0755
 	return nil
 }
@@ -735,6 +736,7 @@ var _ fs.Node = (*File)(nil)
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	//a.Inode = 1
 	//fmt.Printf("File Attr %s %s \n", f.name, f.mime)
+	Debug("File Attr", f.name)
 	if f.mime == "inode/directory" {
 		a.Mode = os.ModeDir | 0777
 	} else {
@@ -1107,7 +1109,7 @@ func CmdConfigure() error {
 	reader_secret := bufio.NewReader(os.Stdin)
 	fmt.Print("Client Secret: ")
 	input_secret, _ := reader_secret.ReadString('\n')
-	fmt.Print("Please wait, testing credentials... ")
+	fmt.Print("Please wait, testing credentials... \n")
 	client_id := strings.Trim(input_id, "\n")
 	client_secret := strings.Trim(input_secret, "\n")
 	access_token, err := GetTokenAccessFromCredentials(client_id, client_secret)
@@ -1203,9 +1205,15 @@ func main() {
 
 	app.Action = func(c *cli.Context) error {
 
+		access_token, _ := GetTokenAccess()
+		if access_token == "" {
+			fmt.Printf("It looks like you didn't authorize your credentials. \n")
+			CmdConfigure()
+		}
 		in := bufio.NewReader(os.Stdin)
 		input := ""
 		for input != "." {
+
 			fmt.Print("CodePicnic> ")
 			input, err := in.ReadString('\n')
 			input = strings.TrimRight(input, "\r\n")
@@ -1241,6 +1249,7 @@ func main() {
 				fmt.Println("Bye!")
 				panic(err)
 			default:
+				fmt.Println("Command not recognized. Have you tried 'help'?")
 
 			}
 		}
