@@ -777,7 +777,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			resp.Flags |= fuse.OpenKeepCache
 		}*/
 	resp.Flags |= fuse.OpenKeepCache
-	f.writers++
+	//f.writers++
 	return f, nil
 	//return &FileHandle{path: f.path}, nil
 }
@@ -925,7 +925,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	f := &File{
 		name:    req.Name,
 		path:    d.path,
-		writers: 1,
+		writers: 0,
 		fs:      d.fs,
 	}
 	d.mimemap[f.name] = "inode/x-empty"
@@ -942,6 +942,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 const maxInt = int(^uint(0) >> 1)
 
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
+	f.writers = 1
 	Debug("Write", f.name)
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -966,6 +967,7 @@ var _ = fs.HandleFlusher(&File{})
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	//Debug("Flush", f.name, strconv.Itoa(req.Flags))
 	Debug("Flush", f.name)
+	Debug("Flush Writers", strconv.Itoa(int(f.writers)))
 
 	if f.writers == 0 {
 		// Read-only handles also get flushes. Make sure we don't
@@ -988,7 +990,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 		// we don't need to track read-only handles
 		//	return nil
 	}
-	f.writers--
+	f.writers = 0
 	//f.UploadFile()
 
 	return nil
