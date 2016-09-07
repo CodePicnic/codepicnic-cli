@@ -488,6 +488,7 @@ func (f *FS) Root() (fs.Node, error) {
 		mountpoint: f.mountpoint,
 		path:       "",
 		mimemap:    make(map[string]string),
+		sizemap:    make(map[string]uint64),
 	}
 	//node_dir.mimemap["/"] = "inode/directory"
 	//node_dir.mimemap[""] = "inode/directory"
@@ -499,6 +500,7 @@ type Dir struct {
 	mime       string
 	mountpoint string
 	mimemap    map[string]string
+	sizemap    map[string]uint64
 	fs         *FS
 }
 
@@ -513,6 +515,7 @@ type File struct {
 	data       []byte
 	writers    uint
 	fs         *FS
+	size       uint64
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -536,16 +539,23 @@ func ListFiles(access_token string, container_name string, path string) []File {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	jsonFiles, err := gabs.ParseJSON(body)
-	jsonPaths, _ := jsonFiles.Search("paths").ChildrenMap()
-	jsonTypes, _ := jsonFiles.Search("types").ChildrenMap()
+	//fmt.Printf("JsonFiles %v \n", jsonFiles)
+	//jsonPaths, _ := jsonFiles.Search("paths").ChildrenMap()
+	//jsonTypes, _ := jsonFiles.Search("types").ChildrenMap()
+	jsonPaths, _ := jsonFiles.ChildrenMap()
 	var FileCollection []File
 	for key, child := range jsonPaths {
 		var jsonFile File
 		jsonFile.name = string(key)
-		jsonFile.path = child.Data().(string)
-		jsonFile.mime = jsonTypes[jsonFile.path].Data().(string)
+		//fmt.Printf("JsonFile %v \n", jsonFile.name)
+		//fmt.Printf("Child Data %v \n", child.Path("type").Data())
+
+		jsonFile.path = child.Path("path").Data().(string)
+		jsonFile.mime = child.Path("type").Data().(string)
+		jsonFile.size = uint64(child.Path("size").Data().(float64))
+		//jsonFile.mime = jsonTypes[jsonFile.path].Data().(string)
 		//Debug("key, value, type", key, child.Data().(string), jsonTypes[jsonFile.path])
-		Debug("key, value, type", key, child.Data().(string), jsonFile.mime)
+		//Debug("key, value, type", key, child.Data().(string), jsonFile.mime)
 		FileCollection = append(FileCollection, jsonFile)
 		//fmt.Printf("key: %v, value: %v, type: %v\n", jsonFile.name, jsonFile.path, jsonFile.mime)
 
@@ -672,12 +682,14 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		path = d.path + "/" + path
 	}
 	//gnome tried to mount some files like autorun.info , as they not have mimetype should not be created
-	Debug("Lookup", path)
+	Debug("Lookup PATH", path, d.mimemap[path])
+	//Debug("Lookup NAME", path, d.mimemap[req.Name])
 	//if strings.HasSuffix(req.Name, ".aaaswp") {
 	//	fmt.Printf("Lookup NOENT %v \n", path)
 	//	return nil, fuse.ENOENT
 	//}
 	//if we are not doing a lookup on root
+	//if d.mimemap[path] != "" {
 	if d.mimemap[path] != "" {
 		switch {
 		case d.mimemap[path] == "inode/directory":
@@ -686,18 +698,22 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				fs:      d.fs,
 				path:    path,
 				mimemap: make(map[string]string),
+				sizemap: make(map[string]uint64),
 			}
 			return child, nil
 		default:
 			Debug("Lookup FILE", path)
 			child := &File{
+				size:       d.sizemap[path],
 				name:       req.Name,
+				path:       path,
 				mime:       d.mimemap[path],
 				basedir:    d.path,
 				fs:         d.fs,
 				mountpoint: d.mountpoint,
 			}
 			return child, nil
+			//}
 		}
 	}
 	return nil, fuse.ENOENT
@@ -710,16 +726,26 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	var inode fuse.Dirent
 	//fmt.Printf("Start ReadDirAll %v \n", d.path)
 	for _, f := range ListFiles(d.fs.token, d.fs.container, d.path) {
-		Debug("File List", f.name, f.mime)
+		Debug("File List", f.name)
+		Debug("File List", f.mime)
 		inode.Name = f.name
 		if d.mimemap == nil {
 			d.mimemap = make(map[string]string)
+		}
+		if d.sizemap == nil {
+			d.sizemap = make(map[string]uint64)
 		}
 		//_, ok := d.mimemap[f.name]
 		//if !ok {
 		//	d.mimemap[f.name] = make([]string, "")
 		//}
-		d.mimemap[f.name] = f.mime
+		path := f.name
+		if d.path != "" {
+			path = d.path + "/" + path
+		}
+		//d.mimemap[f.name] = f.mime
+		d.mimemap[path] = f.mime
+		d.sizemap[path] = f.size
 		if f.mime == "inode/directory" {
 			inode.Type = fuse.DT_Dir
 		} else {
@@ -738,18 +764,26 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	//fmt.Printf("File Attr %s %s \n", f.name, f.mime)
 	Debug("File Attr", f.name)
 	if f.mime == "inode/directory" {
-		a.Mode = os.ModeDir | 0777
+		a.Mode = os.ModeDir | 0755
 	} else {
-		a.Mode = 0777
+		a.Mode = 0644
 	}
-	t, _ := f.ReadFile()
-	f.content = []byte(t)
-	a.Size = uint64(len(t))
+	a.Size = f.size
+	//if a.Size == 0 {
+	/*
+		t, _ := f.ReadFile()
+		f.content = []byte(t)
+		a.Size = uint64(len(t))
+	*/
+	//}
 	return nil
 }
 
 func (f *File) ReadFile() (string, error) {
-	cp_consoles_url := site + "/api/consoles/" + f.fs.container + "/" + f.name
+	Debug("ReadFile", f.name, f.path)
+	cp_consoles_url := site + "/api/consoles/" + f.fs.container + "/" + f.path
+	Debug("cp_consoles_url", cp_consoles_url)
+
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+f.fs.token)
@@ -760,6 +794,7 @@ func (f *File) ReadFile() (string, error) {
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	Debug("ReadFile", string(body))
 	return string(body), nil
 }
 
@@ -1439,7 +1474,7 @@ func main() {
 				} else {
 					mount_point = ""
 				}
-				Debug("MountPonit", mount_point)
+				Debug("MountPoint", mount_point)
 				fmt.Printf("Mounting /app directory ... \n")
 				fmt.Printf("TIP: If you want to mount in the background please add \"&\" at the end of the mount command. \n")
 				MountConsole(access_token, c.Args()[0], mount_point)
@@ -1453,13 +1488,20 @@ func main() {
 		{
 			Name:  "unmount",
 			Usage: "unmount /app filesystem from a container",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:        "debug",
+					Usage:       "Debugging",
+					Destination: &debug,
+				},
+			},
 			Action: func(c *cli.Context) error {
 				access_token, _ := GetTokenAccess()
-				if access_token == "" {
+				/*if access_token == "" {
 					fmt.Printf("It looks like you didn't authorize your credentials. \n")
 					CmdConfigure()
 					return nil
-				}
+				}*/
 				UnmountConsole(access_token, c.Args()[0])
 				/*if err != nil {
 					fmt.Println("Error: ", err)
