@@ -1194,6 +1194,43 @@ func CmdRestartConsole(console string) error {
 	RestartConsole(access_token, console)
 	return nil
 }
+
+func CmdMountConsole(args []string) error {
+
+	access_token, _ := GetTokenAccess()
+	if access_token == "" {
+		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+		CmdConfigure()
+		return nil
+	}
+	StartConsole(access_token, args[0])
+	var mount_point string
+	if len(args) > 1 {
+		mount_point = args[1]
+	} else {
+		mount_point = ""
+	}
+	Debug("MountPoint", mount_point)
+	fmt.Printf("Mounting /app directory ... \n")
+	fmt.Printf("TIP: If you want to mount in the background please add \"&\" at the end of the mount command. \n")
+	MountConsole(access_token, args[0], mount_point)
+	/*if err != nil {
+	    fmt.Println("Error: ", err)
+	    panic(err)
+	}*/
+	return nil
+}
+func CmdUnmountConsole(console string) error {
+	access_token, _ := GetTokenAccess()
+	if access_token == "" {
+		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+		CmdConfigure()
+		return nil
+	}
+	UnmountConsole(access_token, console)
+	return nil
+}
+
 func CmdCreateConsole() error {
 	access_token, _ := GetTokenAccess()
 	if access_token == "" {
@@ -1239,7 +1276,7 @@ func main() {
 	var container_size, container_type, title, hostname, current_mode string
 
 	app.Action = func(c *cli.Context) error {
-
+		debug = false
 		access_token, _ := GetTokenAccess()
 		if access_token == "" {
 			fmt.Printf("It looks like you didn't authorize your credentials. \n")
@@ -1253,39 +1290,47 @@ func main() {
 			input, err := in.ReadString('\n')
 			input = strings.TrimRight(input, "\r\n")
 			inputArgs := strings.Fields(input)
-
-			switch inputArgs[0] {
-			case "list", "ls":
-				if len(inputArgs) > 1 {
-					if inputArgs[2] == "json" {
-						format = "json"
-					} else {
-						format = "text"
-					}
-				}
-				CmdListConsoles()
-			case "clear", "cls":
-				CmdClearScreen()
-			case "stop":
-				CmdStopConsole(inputArgs[1])
-			case "start":
-				CmdStartConsole(inputArgs[1])
-			case "restart":
-				CmdRestartConsole(inputArgs[1])
-			case "connect":
-				CmdConnectConsole(inputArgs[1])
-			case "create":
-				CmdCreateConsole()
-			case "configure":
-				CmdConfigure()
-			case "help":
-				cli.ShowAppHelp(c)
-			case "exit":
-				fmt.Println("Bye!")
-				panic(err)
-			default:
+			//fmt.Printf("inputargs %v \n", inputArgs)
+			if len(inputArgs) == 0 {
 				fmt.Println("Command not recognized. Have you tried 'help'?")
-
+			} else {
+				switch inputArgs[0] {
+				case "list", "ls":
+					if len(inputArgs) > 1 {
+						if inputArgs[2] == "json" {
+							format = "json"
+						} else {
+							format = "text"
+						}
+					}
+					CmdListConsoles()
+				case "clear", "cls":
+					CmdClearScreen()
+				case "mount":
+					mountArgs := append(inputArgs[:0], inputArgs[1:]...)
+					CmdMountConsole(mountArgs)
+				case "unmount":
+					CmdUnmountConsole(inputArgs[1])
+				case "stop":
+					CmdStopConsole(inputArgs[1])
+				case "start":
+					CmdStartConsole(inputArgs[1])
+				case "restart":
+					CmdRestartConsole(inputArgs[1])
+				case "connect":
+					CmdConnectConsole(inputArgs[1])
+				case "create":
+					CmdCreateConsole()
+				case "configure":
+					CmdConfigure()
+				case "help":
+					cli.ShowAppHelp(c)
+				case "exit":
+					fmt.Println("Bye!")
+					panic(err)
+				default:
+					fmt.Println("Command not recognized. Have you tried 'help'?")
+				}
 			}
 		}
 
@@ -1461,23 +1506,26 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				access_token, _ := GetTokenAccess()
-				if access_token == "" {
-					fmt.Printf("It looks like you didn't authorize your credentials. \n")
-					CmdConfigure()
-					return nil
-				}
-				StartConsole(access_token, c.Args()[0])
-				var mount_point string
-				if len(c.Args()) > 1 {
-					mount_point = c.Args()[1]
-				} else {
-					mount_point = ""
-				}
-				Debug("MountPoint", mount_point)
-				fmt.Printf("Mounting /app directory ... \n")
-				fmt.Printf("TIP: If you want to mount in the background please add \"&\" at the end of the mount command. \n")
-				MountConsole(access_token, c.Args()[0], mount_point)
+				CmdMountConsole(c.Args())
+				/*
+					access_token, _ := GetTokenAccess()
+					if access_token == "" {
+						fmt.Printf("It looks like you didn't authorize your credentials. \n")
+						CmdConfigure()
+						return nil
+					}
+					StartConsole(access_token, c.Args()[0])
+					var mount_point string
+					if len(c.Args()) > 1 {
+						mount_point = c.Args()[1]
+					} else {
+						mount_point = ""
+					}
+					Debug("MountPoint", mount_point)
+					fmt.Printf("Mounting /app directory ... \n")
+					fmt.Printf("TIP: If you want to mount in the background please add \"&\" at the end of the mount command. \n")
+					MountConsole(access_token, c.Args()[0], mount_point)
+				*/
 				/*if err != nil {
 					fmt.Println("Error: ", err)
 					panic(err)
@@ -1496,13 +1544,13 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				access_token, _ := GetTokenAccess()
+				//access_token, _ := GetTokenAccess()
 				/*if access_token == "" {
 					fmt.Printf("It looks like you didn't authorize your credentials. \n")
 					CmdConfigure()
 					return nil
 				}*/
-				UnmountConsole(access_token, c.Args()[0])
+				CmdUnmountConsole(c.Args()[0])
 				/*if err != nil {
 					fmt.Println("Error: ", err)
 					panic(err)
