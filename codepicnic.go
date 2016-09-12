@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	//"os/signal"
 	"os/user"
 	"strconv"
 	"strings"
@@ -30,6 +31,7 @@ import (
 	"bazil.org/fuse/fs"
 	"bazil.org/fuse/fuseutil"
 	"github.com/Jeffail/gabs"
+	"github.com/kardianos/osext"
 	"github.com/patrickmn/go-cache"
 	"path/filepath"
 	"runtime"
@@ -585,7 +587,23 @@ func ListFiles(access_token string, container_name string, path string) []File {
 //func UnmountConsole(access_token string, container_name string, mount_dir string) error {
 func UnmountConsole(access_token string, container_name string) error {
 	mountpoint := GetMountsFromFile(container_name)
-	fuse.Unmount(mountpoint)
+	if mountpoint == "" {
+		fmt.Printf("A mount point for container %s doesn't exist\n", container_name)
+	} else {
+		err := fuse.Unmount(mountpoint)
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "exit status 1: fusermount: entry for") {
+				fmt.Printf("A mount point for container %s doesn't exist\n", container_name)
+			} else {
+				fmt.Printf("Error when unmounting %s %s", container_name, err.Error())
+			}
+			return err
+		} else {
+
+			fmt.Printf("Container %s succesfully unmounted\n", container_name)
+			SaveMountsToFile(container_name, "")
+		}
+	}
 	return nil
 }
 func debugLog(msg interface{}) {
@@ -642,6 +660,25 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	//defer mp.Close()
 	//serveErr <- fs.Serve(mp, filesys)
 	//serveErr <- srv.Serve(filesys)
+
+	// After setting everything up!
+	// Wait for a SIGINT (perhaps triggered by user with CTRL-C)
+	// Run cleanup when signal is received
+	/*
+		signalChan := make(chan os.Signal, 1)
+		cleanupDone := make(chan bool)
+		signal.Notify(signalChan, os.Interrupt)
+		go func() {
+			for _ = range signalChan {
+				fmt.Println("\nReceived an interrupt, stopping services...\n")
+				mp.Close()
+				CmdUnmountConsole(container_name)
+				cleanupDone <- true
+			}
+		}()
+		<-cleanupDone
+	*/
+
 	err = fs.Serve(mp, filesys)
 	closeErr := mp.Close()
 	if err == nil {
@@ -856,6 +893,8 @@ func (d *Dir) CreateDir(newdir string) (err error) {
 	if err != nil {
 		return err
 	}
+	cache_key := d.fs.container + ":" + d.path
+	cp_cache.Delete(cache_key)
 	defer resp.Body.Close()
 	return nil
 }
@@ -874,8 +913,8 @@ func (d *Dir) CreateFile(newfile string) (err error) {
 	if err != nil {
 		return err
 	}
-	//cache_key := d.fs.container + ":" + d.path
-	//cp_cache.Delete(cache_key)
+	cache_key := d.fs.container + ":" + d.path
+	cp_cache.Delete(cache_key)
 	defer resp.Body.Close()
 	return nil
 }
@@ -983,6 +1022,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		writers: 0,
 		fs:      d.fs,
 		dir:     d,
+		basedir: d.path,
 	}
 	d.mimemap[f.name] = "inode/x-empty"
 	if d.path == "/" {
@@ -1002,19 +1042,19 @@ var _ = fs.HandleWriter(&File{})
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	f.writers = 1
 	Debug("Write", f.name)
-	fmt.Printf("Req Data %v \n", req.Data)
-	fmt.Printf("Req Len %v \n", int64(len(req.Data)))
-	fmt.Printf("Req Offset %v \n", req.Offset)
+	//fmt.Printf("Req Data %v \n", req.Data)
+	//fmt.Printf("Req Len %v \n", int64(len(req.Data)))
+	//fmt.Printf("Req Offset %v \n", req.Offset)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// expand the buffer if necessary
 	newLen := req.Offset + int64(len(req.Data))
-	fmt.Printf("Req NewLen %v \n", newLen)
-	fmt.Printf("Req Len File %v \n", len(f.data))
-	fmt.Printf("Req Size File %v \n", f.size)
+	//fmt.Printf("Req NewLen %v \n", newLen)
+	//fmt.Printf("Req Len File %v \n", len(f.data))
+	//fmt.Printf("Req Size File %v \n", f.size)
 	if newLen > int64(maxInt) {
-		fmt.Printf("Write ERROR %v \n", f.name)
+		//fmt.Printf("Write ERROR %v \n", f.name)
 		return fuse.Errno(syscall.EFBIG)
 	}
 
@@ -1026,13 +1066,16 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.data = append(f.data, make([]byte, newLen-int(f.size))...)
 	} else if newLen < int(f.size) {
 		//if newLen is < f.size we need to shrink the slice
-		f.data = append([]byte(nil), f.data[:newLen]...)
+		fmt.Printf("Req NewLen %v \n", newLen)
+		fmt.Printf("f.data %v \n", f.data)
+		//f.data = append([]byte(nil), f.data[:newLen]...)
+		f.data = append([]byte(nil), req.Data[:newLen]...)
 	}
 
 	n := copy(f.data[req.Offset:], req.Data)
 	resp.Size = n
 	f.size = uint64(n)
-	fmt.Printf("Resp Size File %v \n", n)
+	//fmt.Printf("Resp Size File %v \n", n)
 	return nil
 }
 
@@ -1051,9 +1094,9 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	}
 
 	Debug("Flush Write", "")
-	//cache_key := f.dir.fs.container + ":" + f.dir.path
-	//Debug("Invalidate", cache_key)
-	//cp_cache.Delete(cache_key)
+	cache_key := f.dir.fs.container + ":" + f.dir.path
+	Debug("Invalidate", cache_key)
+	cp_cache.Delete(cache_key)
 	f.UploadFile()
 	return nil
 }
@@ -1062,7 +1105,6 @@ var _ = fs.HandleReleaser(&File{})
 
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	//Debug("Release", f.name, req.Flags)
-	fmt.Printf("DEBUG file %v \n", f)
 	Debug("Release", f.name)
 	if req.Flags.IsReadOnly() {
 		// we don't need to track read-only handles
@@ -1245,16 +1287,31 @@ func CmdMountConsole(args []string) error {
 		return nil
 	}
 	StartConsole(access_token, args[0])
-	var mount_point string
-	if len(args) > 1 {
-		mount_point = args[1]
+	mountpoint := GetMountsFromFile(args[0])
+	if mountpoint == "" {
+		var mount_point string
+		if len(args) > 1 {
+			mount_point = args[1]
+		} else {
+			mount_point = ""
+		}
+		Debug("MountPoint", mount_point)
+		fmt.Printf("Mounting /app directory ... \n")
+		fmt.Printf("TIP: If you want to mount in the background please add \"&\" at the end of the mount command. \n")
+		MountConsole(access_token, args[0], mount_point)
 	} else {
-		mount_point = ""
+
+		fmt.Printf("Container %s is already mounted in %s \n", args[0], mountpoint)
+		reader_unmount := bufio.NewReader(os.Stdin)
+		input_unmount := "yes"
+		fmt.Printf("Do you want to unmount and then mount to a different directory?[yes]")
+		input, _ := reader_unmount.ReadString('\n')
+		input_unmount = strings.TrimRight(input, "\r\n")
+		if input_unmount == "yes" {
+			CmdUnmountConsole(args[0])
+			CmdMountConsole(args)
+		}
 	}
-	Debug("MountPoint", mount_point)
-	fmt.Printf("Mounting /app directory ... \n")
-	fmt.Printf("TIP: If you want to mount in the background please add \"&\" at the end of the mount command. \n")
-	MountConsole(access_token, args[0], mount_point)
 	/*if err != nil {
 	    fmt.Println("Error: ", err)
 	    panic(err)
@@ -1348,8 +1405,24 @@ func main() {
 				case "clear", "cls":
 					CmdClearScreen()
 				case "mount":
-					mountArgs := append(inputArgs[:0], inputArgs[1:]...)
-					CmdMountConsole(mountArgs)
+					cp_bin, _ := osext.Executable()
+					fmt.Println(cp_bin)
+					//cmd := exec.Command("nohup", cp_bin, inputArgs[1], "&")
+					cmd := exec.Command("nohup", cp_bin, "mount", inputArgs[1])
+					f, err := os.Create("nohup.out")
+					if err != nil {
+						// handle error
+					}
+
+					// redirect both stdout and stderr to the log file
+					cmd.Stdout = f
+					cmd.Stderr = f
+					err = cmd.Start()
+					if err != nil {
+						fmt.Printf("Error %v", err)
+					}
+					//mountArgs := append(inputArgs[:0], inputArgs[1:]...)
+					//CmdMountConsole(mountArgs)
 				case "unmount":
 					CmdUnmountConsole(inputArgs[1])
 				case "stop":
