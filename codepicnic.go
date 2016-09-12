@@ -30,9 +30,11 @@ import (
 	"bazil.org/fuse/fs"
 	"bazil.org/fuse/fuseutil"
 	"github.com/Jeffail/gabs"
+	"github.com/patrickmn/go-cache"
 	"path/filepath"
 	"runtime"
 	"syscall"
+	"time"
 )
 
 //const site = "https://codepicnic.com"
@@ -53,6 +55,8 @@ var format string
 //const swarm_host = "tcp://54.88.32.109:4000"
 
 var debug = true
+
+var cp_cache = cache.New(5*time.Minute, 30*time.Second)
 
 type Token struct {
 	Access  string `json:"access_token"`
@@ -516,56 +520,65 @@ type File struct {
 	writers    uint
 	fs         *FS
 	size       uint64
+	dir        *Dir
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	//fmt.Printf("Dir Attr %s \n", d.path)
-	Debug("Dir Attr", d.path)
-	a.Mode = os.ModeDir | 0755
+	//Debug("Dir Attr", d.path)
+	a.Mode = os.ModeDir | 0777
 	return nil
 }
 
 func ListFiles(access_token string, container_name string, path string) []File {
-	cp_consoles_url := site + "/api/consoles/" + container_name + "/files?path=" + path
-	Debug("list files", cp_consoles_url)
-	req, err := http.NewRequest("GET", cp_consoles_url, nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+access_token)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	jsonFiles, err := gabs.ParseJSON(body)
-	//fmt.Printf("JsonFiles %v \n", jsonFiles)
-	//jsonPaths, _ := jsonFiles.Search("paths").ChildrenMap()
-	//jsonTypes, _ := jsonFiles.Search("types").ChildrenMap()
-	jsonPaths, _ := jsonFiles.ChildrenMap()
+	cache_key := container_name + ":" + path
 	var FileCollection []File
-	for key, child := range jsonPaths {
-		var jsonFile File
-		jsonFile.name = string(key)
-		//fmt.Printf("JsonFile %v \n", jsonFile.name)
-		//fmt.Printf("Child Data %v \n", child.Path("type").Data())
+	FileCollectionCache, found := cp_cache.Get(cache_key)
+	if found {
+		FileCollection = FileCollectionCache.([]File)
+	} else {
+		cp_consoles_url := site + "/api/consoles/" + container_name + "/files?path=" + path
+		Debug("list files", cp_consoles_url)
+		req, err := http.NewRequest("GET", cp_consoles_url, nil)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+access_token)
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		jsonFiles, err := gabs.ParseJSON(body)
+		//fmt.Printf("JsonFiles %v \n", jsonFiles)
+		//jsonPaths, _ := jsonFiles.Search("paths").ChildrenMap()
+		//jsonTypes, _ := jsonFiles.Search("types").ChildrenMap()
+		jsonPaths, _ := jsonFiles.ChildrenMap()
+		for key, child := range jsonPaths {
+			var jsonFile File
+			jsonFile.name = string(key)
+			//fmt.Printf("JsonFile %v \n", jsonFile.name)
+			//fmt.Printf("Child Data %v \n", child.Path("type").Data())
 
-		jsonFile.path = child.Path("path").Data().(string)
-		jsonFile.mime = child.Path("type").Data().(string)
-		jsonFile.size = uint64(child.Path("size").Data().(float64))
-		//jsonFile.mime = jsonTypes[jsonFile.path].Data().(string)
-		//Debug("key, value, type", key, child.Data().(string), jsonTypes[jsonFile.path])
-		//Debug("key, value, type", key, child.Data().(string), jsonFile.mime)
-		FileCollection = append(FileCollection, jsonFile)
-		//fmt.Printf("key: %v, value: %v, type: %v\n", jsonFile.name, jsonFile.path, jsonFile.mime)
+			jsonFile.path = child.Path("path").Data().(string)
+			jsonFile.mime = child.Path("type").Data().(string)
+			jsonFile.size = uint64(child.Path("size").Data().(float64))
+			//jsonFile.mime = jsonTypes[jsonFile.path].Data().(string)
+			//Debug("key, value, type", key, child.Data().(string), jsonTypes[jsonFile.path])
+			//Debug("key, value, type", key, child.Data().(string), jsonFile.mime)
+			FileCollection = append(FileCollection, jsonFile)
+			//fmt.Printf("key: %v, value: %v, type: %v\n", jsonFile.name, jsonFile.path, jsonFile.mime)
 
+		}
+		Debug("Set Cache", cache_key)
+		cp_cache.Set(cache_key, FileCollection, cache.DefaultExpiration)
+		//for key, child := range jsonTypes {
+		//	fmt.Printf("key: %v, value: %v\n", key, child.Data().(string))
+		//}
+		//_ = json.NewDecoder(resp.Body).Decode(&console_collection)
+		//fmt.Printf("%+v\n", string(body))
+		//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
 	}
-	//for key, child := range jsonTypes {
-	//	fmt.Printf("key: %v, value: %v\n", key, child.Data().(string))
-	//}
-	//_ = json.NewDecoder(resp.Body).Decode(&console_collection)
-	//fmt.Printf("%+v\n", string(body))
-	//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
 	return FileCollection
 }
 
@@ -589,9 +602,10 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 		mount_point = mount_dir + "/" + container_name
 		os.Mkdir(mount_dir+"/"+container_name, 0755)
 	}
-	Debug("MountPoint", mount_point)
+	//Debug("MountPoint", mount_point)
 	mp, err := fuse.Mount(mount_point, fuse.MaxReadahead(32*1024*1024),
-		fuse.AsyncRead(), fuse.WritebackCache())
+		//fuse.AsyncRead(), fuse.WritebackCache())
+		fuse.AsyncRead())
 	if err != nil {
 		fmt.Printf("serve err %v", err)
 		return err
@@ -682,7 +696,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		path = d.path + "/" + path
 	}
 	//gnome tried to mount some files like autorun.info , as they not have mimetype should not be created
-	Debug("Lookup PATH", path, d.mimemap[path])
+	//Debug("Lookup PATH", path, d.mimemap[path])
 	//Debug("Lookup NAME", path, d.mimemap[req.Name])
 	//if strings.HasSuffix(req.Name, ".aaaswp") {
 	//	fmt.Printf("Lookup NOENT %v \n", path)
@@ -693,7 +707,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	if d.mimemap[path] != "" {
 		switch {
 		case d.mimemap[path] == "inode/directory":
-			Debug("Lookup DIR", path)
+			//Debug("Lookup DIR", path)
 			child := &Dir{
 				fs:      d.fs,
 				path:    path,
@@ -702,7 +716,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			}
 			return child, nil
 		default:
-			Debug("Lookup FILE", path)
+			//Debug("Lookup FILE", path)
 			child := &File{
 				size:       d.sizemap[path],
 				name:       req.Name,
@@ -710,6 +724,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				mime:       d.mimemap[path],
 				basedir:    d.path,
 				fs:         d.fs,
+				dir:        d,
 				mountpoint: d.mountpoint,
 			}
 			return child, nil
@@ -724,10 +739,9 @@ var _ = fs.HandleReadDirAller(&Dir{})
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	var res []fuse.Dirent
 	var inode fuse.Dirent
-	//fmt.Printf("Start ReadDirAll %v \n", d.path)
 	for _, f := range ListFiles(d.fs.token, d.fs.container, d.path) {
-		Debug("File List", f.name)
-		Debug("File List", f.mime)
+		//Debug("File List", f.name)
+		//Debug("File List", f.mime)
 		inode.Name = f.name
 		if d.mimemap == nil {
 			d.mimemap = make(map[string]string)
@@ -762,20 +776,18 @@ var _ fs.Node = (*File)(nil)
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	//a.Inode = 1
 	//fmt.Printf("File Attr %s %s \n", f.name, f.mime)
-	Debug("File Attr", f.name)
+	//Debug("File Attr", f.name)
 	if f.mime == "inode/directory" {
 		a.Mode = os.ModeDir | 0755
 	} else {
-		a.Mode = 0644
+		a.Mode = 0777
 	}
 	a.Size = f.size
-	//if a.Size == 0 {
 	/*
 		t, _ := f.ReadFile()
 		f.content = []byte(t)
 		a.Size = uint64(len(t))
 	*/
-	//}
 	return nil
 }
 
@@ -794,7 +806,7 @@ func (f *File) ReadFile() (string, error) {
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	Debug("ReadFile", string(body))
+	//Debug("ReadFile", string(body))
 	return string(body), nil
 }
 
@@ -830,8 +842,6 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	return nil
 }
 
-var _ = fs.HandleWriter(&File{})
-
 func (d *Dir) CreateDir(newdir string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/create_folder"
 	cp_payload := ` { "path": "` + newdir + `" }`
@@ -864,6 +874,8 @@ func (d *Dir) CreateFile(newfile string) (err error) {
 	if err != nil {
 		return err
 	}
+	//cache_key := d.fs.container + ":" + d.path
+	//cp_cache.Delete(cache_key)
 	defer resp.Body.Close()
 	return nil
 }
@@ -901,8 +913,9 @@ func (f *File) UploadFile() (err error) {
 	//	return err
 	//}
 	//defer fh.Close()
+	Debug("Upload Data", string(f.data))
 	temp_file, err := ioutil.TempFile(os.TempDir(), "cp_")
-	err = ioutil.WriteFile(temp_file.Name(), f.data, 0644)
+	err = ioutil.WriteFile(temp_file.Name(), f.data, 0666)
 	if err != nil {
 		fmt.Printf("Error writint temp %v", err)
 		return err
@@ -927,6 +940,7 @@ func (f *File) UploadFile() (err error) {
 	w.Close()
 
 	// Now that you have a form, you can submit it to your handler.
+	Debug("Upload url", cp_consoles_url)
 	req, err := http.NewRequest("POST", cp_consoles_url, &b)
 	if err != nil {
 		fmt.Printf("Error 3 %v \n", err)
@@ -959,11 +973,16 @@ var _ = fs.NodeCreater(&Dir{})
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	Debug("Create", req.Name, d.path)
+	path := req.Name
+	if d.path != "" {
+		path = d.path + "/" + path
+	}
 	f := &File{
 		name:    req.Name,
-		path:    d.path,
+		path:    path,
 		writers: 0,
 		fs:      d.fs,
+		dir:     d,
 	}
 	d.mimemap[f.name] = "inode/x-empty"
 	if d.path == "/" {
@@ -978,24 +997,42 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 const maxInt = int(^uint(0) >> 1)
 
+var _ = fs.HandleWriter(&File{})
+
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	f.writers = 1
 	Debug("Write", f.name)
+	fmt.Printf("Req Data %v \n", req.Data)
+	fmt.Printf("Req Len %v \n", int64(len(req.Data)))
+	fmt.Printf("Req Offset %v \n", req.Offset)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// expand the buffer if necessary
 	newLen := req.Offset + int64(len(req.Data))
+	fmt.Printf("Req NewLen %v \n", newLen)
+	fmt.Printf("Req Len File %v \n", len(f.data))
+	fmt.Printf("Req Size File %v \n", f.size)
 	if newLen > int64(maxInt) {
 		fmt.Printf("Write ERROR %v \n", f.name)
 		return fuse.Errno(syscall.EFBIG)
 	}
-	if newLen := int(newLen); newLen > len(f.data) {
+
+	/*if newLen := int(newLen); newLen > len(f.data) {
 		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
+	}*/
+	//use file size is better than len(f.data)
+	if newLen := int(newLen); newLen > int(f.size) {
+		f.data = append(f.data, make([]byte, newLen-int(f.size))...)
+	} else if newLen < int(f.size) {
+		//if newLen is < f.size we need to shrink the slice
+		f.data = append([]byte(nil), f.data[:newLen]...)
 	}
 
 	n := copy(f.data[req.Offset:], req.Data)
 	resp.Size = n
+	f.size = uint64(n)
+	fmt.Printf("Resp Size File %v \n", n)
 	return nil
 }
 
@@ -1014,6 +1051,9 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	}
 
 	Debug("Flush Write", "")
+	//cache_key := f.dir.fs.container + ":" + f.dir.path
+	//Debug("Invalidate", cache_key)
+	//cp_cache.Delete(cache_key)
 	f.UploadFile()
 	return nil
 }
@@ -1022,6 +1062,7 @@ var _ = fs.HandleReleaser(&File{})
 
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	//Debug("Release", f.name, req.Flags)
+	fmt.Printf("DEBUG file %v \n", f)
 	Debug("Release", f.name)
 	if req.Flags.IsReadOnly() {
 		// we don't need to track read-only handles
