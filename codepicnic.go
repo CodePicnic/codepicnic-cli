@@ -1196,10 +1196,20 @@ func CmdListConsoles() error {
 
 		consoles := ListConsoles(access_token)
 		output := []string{
-			"ID | TITLE | CONTAINER NAME | CONTAINER TYPE | CREATED | URL",
+			"CONTAINER NAME | TITLE |  TYPE | CREATED | MOUNTED | URL",
 		}
 		for i := range consoles {
-			console_cols := strconv.Itoa(consoles[i].Id) + "|" + consoles[i].Title + "|" + consoles[i].ContainerName + "|" + consoles[i].ContainerType + "|" + consoles[i].CreatedAt + "|" + site + "/consoles/" + consoles[i].Permalink
+			var mounted string
+			mountpoint := GetMountsFromFile(consoles[i].ContainerName)
+			if mountpoint == "" {
+				mounted = "NO"
+			} else {
+				mounted = "YES"
+			}
+			layout := "2006-01-02T15:04:05.000Z"
+			t, _ := time.Parse(layout, consoles[i].CreatedAt)
+			//console_cols := strconv.Itoa(consoles[i].Id) + "|" + consoles[i].Title + "|" + consoles[i].ContainerName + "|" + consoles[i].ContainerType + "|" + consoles[i].CreatedAt + "|" + mounted + "|" + site + "/consoles/" + consoles[i].Permalink
+			console_cols := consoles[i].ContainerName + "|" + consoles[i].Title + "|" + consoles[i].ContainerType + "|" + t.Format("2006-01-02 15:04:05") + "|" + mounted + "|" + site + "/consoles/" + consoles[i].Permalink
 			output = append(output, console_cols)
 		}
 		result := columnize.SimpleFormat(output)
@@ -1406,20 +1416,25 @@ func main() {
 					CmdClearScreen()
 				case "mount":
 					cp_bin, _ := osext.Executable()
-					fmt.Println(cp_bin)
-					//cmd := exec.Command("nohup", cp_bin, inputArgs[1], "&")
-					cmd := exec.Command("nohup", cp_bin, "mount", inputArgs[1])
-					f, err := os.Create("nohup.out")
-					if err != nil {
-						// handle error
+					fmt.Printf("Mounting /app directory ... \n")
+					var mountbase string
+					if len(inputArgs) > 2 {
+						mountbase = inputArgs[2]
 					}
-
-					// redirect both stdout and stderr to the log file
-					cmd.Stdout = f
-					cmd.Stderr = f
+					cmd := exec.Command("nohup", cp_bin, "mount", inputArgs[1], mountbase)
 					err = cmd.Start()
 					if err != nil {
 						fmt.Printf("Error %v", err)
+					} else {
+						var mountpoint string
+						if strings.HasPrefix(mountbase, "/") {
+							mountpoint = mountbase + "/" + inputArgs[1]
+						} else {
+							pwd, _ := os.Getwd()
+							mountpoint = pwd + "/" + mountbase + "/" + inputArgs[1]
+						}
+						fmt.Printf("/app directory mounted on %s \n", mountpoint)
+
 					}
 					//mountArgs := append(inputArgs[:0], inputArgs[1:]...)
 					//CmdMountConsole(mountArgs)
