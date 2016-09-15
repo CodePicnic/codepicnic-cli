@@ -31,6 +31,7 @@ import (
 	"bazil.org/fuse/fs"
 	"bazil.org/fuse/fuseutil"
 	"github.com/Jeffail/gabs"
+	//"github.com/fatih/color"
 	"github.com/kardianos/osext"
 	"github.com/patrickmn/go-cache"
 	"path/filepath"
@@ -45,6 +46,13 @@ const FragSeparator = ':'
 const cfg_dir = ".codepicnic"
 const cfg_file = "config"
 
+const COLOR_table = 188
+const COLOR_response = 81
+const COLOR_entry = 68
+const COLOR_off = 66
+const COLOR_on = 72
+const COLOR_prompt = 133
+
 var version string
 var site string
 var swarm_host string
@@ -56,9 +64,61 @@ var format string
 
 //const swarm_host = "tcp://54.88.32.109:4000"
 
+const str_prompt = "CodePicnic> "
+
 var debug = true
 
 var cp_cache = cache.New(5*time.Minute, 30*time.Second)
+
+//color functions
+
+func color(s string, t string) string {
+	color_map := make(map[string]string)
+	color_map["table"] = "244"
+	color_map["response"] = "81"
+	color_map["entry"] = "68"
+	color_map["off"] = "66"
+	color_map["data"] = "72"
+	color_map["prompt"] = "133"
+	color_map["exit"] = "81"
+	esc_start := "\033[38;5;"
+	esc_m := "m"
+	esc_default := "\x1b[39m"
+	esc_end := "\033[38;5;68m"
+	esc_data := "\033[38;5;72m"
+	if t == "exit" {
+		return esc_start + color_map[t] + esc_m + s + esc_default
+	} else if t == "off" {
+		return esc_start + color_map[t] + esc_m + s + esc_data
+	} else {
+		return esc_start + color_map[t] + esc_m + s + esc_end
+	}
+}
+
+func TrimColor(s string) string {
+	s = strings.TrimRight(s, "\r\n")
+	s = strings.TrimLeft(s, "\033[38;5;68")
+	return s
+}
+
+func color_prompt(s string) string {
+	//if supportsColor() && !windows() {
+	return "\033[38;5;133m" + s + "\x1b[39m"
+	//}
+	//return s
+}
+func GetConsoleFromPrompt() string {
+	reader_console := bufio.NewReader(os.Stdin)
+	fmt.Print(color("Console Id [ ]: ", "prompt"))
+	input, _ := reader_console.ReadString('\n')
+	return strings.TrimRight(input, "\r\n")
+}
+func GetMountFromPrompt() string {
+	reader_console := bufio.NewReader(os.Stdin)
+	fmt.Print(color("Mount Point [.]: ", "prompt"))
+	input, _ := reader_console.ReadString('\n')
+	return strings.TrimRight(input, "\r\n")
+}
 
 type Token struct {
 	Access  string `json:"access_token"`
@@ -600,7 +660,7 @@ func UnmountConsole(access_token string, container_name string) error {
 			return err
 		} else {
 
-			fmt.Printf("Container %s succesfully unmounted\n", container_name)
+			fmt.Printf(color("Container %s succesfully unmounted\n", "response"), container_name)
 			SaveMountsToFile(container_name, "")
 		}
 	}
@@ -1196,7 +1256,7 @@ func CmdListConsoles() error {
 
 		consoles := ListConsoles(access_token)
 		output := []string{
-			"CONTAINER NAME | TITLE |  TYPE | CREATED | MOUNTED | URL",
+			"CONSOLE ID |TITLE|TYPE|CREATED|MOUNTED|URL",
 		}
 		for i := range consoles {
 			var mounted string
@@ -1208,12 +1268,26 @@ func CmdListConsoles() error {
 			}
 			layout := "2006-01-02T15:04:05.000Z"
 			t, _ := time.Parse(layout, consoles[i].CreatedAt)
-			//console_cols := strconv.Itoa(consoles[i].Id) + "|" + consoles[i].Title + "|" + consoles[i].ContainerName + "|" + consoles[i].ContainerType + "|" + consoles[i].CreatedAt + "|" + mounted + "|" + site + "/consoles/" + consoles[i].Permalink
 			console_cols := consoles[i].ContainerName + "|" + consoles[i].Title + "|" + consoles[i].ContainerType + "|" + t.Format("2006-01-02 15:04:05") + "|" + mounted + "|" + site + "/consoles/" + consoles[i].Permalink
 			output = append(output, console_cols)
 		}
 		result := columnize.SimpleFormat(output)
-		fmt.Println(result)
+		istitle := true
+		scanner := bufio.NewScanner(strings.NewReader(result))
+		for scanner.Scan() {
+			//first line is the title
+			if istitle {
+				fmt.Println(color(scanner.Text(), "table"))
+			} else {
+				line := strings.Replace(scanner.Text(), "NO", color("NO", "off"), 1)
+				fmt.Println(color(line, "data"))
+			}
+			istitle = false
+		}
+
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintln(os.Stderr, "reading standard input:", err)
+		}
 	}
 	return nil
 }
@@ -1263,7 +1337,9 @@ func CmdStartConsole(console string) error {
 		CmdConfigure()
 		return nil
 	}
+	fmt.Printf(color("Starting console ...", "response"))
 	StartConsole(access_token, console)
+	fmt.Printf(color(" Done. * %s \n", "response"), console)
 	return nil
 }
 func CmdConnectConsole(console string) error {
@@ -1339,6 +1415,24 @@ func CmdUnmountConsole(console string) error {
 	return nil
 }
 
+func BgMountConsole(console_id string, mountbase string) {
+	cp_bin, _ := osext.Executable()
+	var mountpoint string
+	fmt.Printf(color("Mounting /app directory from %s ... ", "response"), console_id)
+	cmd := exec.Command("nohup", cp_bin, "mount", console_id, mountbase)
+	err := cmd.Start()
+	if err != nil {
+		fmt.Printf("Error %v", err)
+	} else {
+		if strings.HasPrefix(mountbase, "/") {
+			mountpoint = mountbase + "/" + console_id
+		} else {
+			pwd, _ := os.Getwd()
+			mountpoint = pwd + "/" + mountbase + "/" + console_id
+		}
+		fmt.Printf(color("Done * Mounted on %s \n", "response"), mountpoint)
+	}
+}
 func CmdCreateConsole() error {
 	access_token, _ := GetTokenAccess()
 	if access_token == "" {
@@ -1350,7 +1444,7 @@ func CmdCreateConsole() error {
 	container_type := "bash"
 	title := ""
 	reader_type := bufio.NewReader(os.Stdin)
-	fmt.Print("Type?(bash,ruby,python ... )[bash]: ")
+	fmt.Print(color("Type (bash, ruby, python, ... ) [ bash ]: ", "prompt"))
 	input, _ := reader_type.ReadString('\n')
 	container_type = strings.TrimRight(input, "\r\n")
 	//reader_size := bufio.NewReader(os.Stdin)
@@ -1358,7 +1452,7 @@ func CmdCreateConsole() error {
 	//input, _ = reader_size.ReadString('\n')
 	//container_size = strings.TrimRight(input, "\r\n")
 	reader_title := bufio.NewReader(os.Stdin)
-	fmt.Print("Title?[]: ")
+	fmt.Print(color("Title [ ]: ", "prompt"))
 	input, _ = reader_title.ReadString('\n')
 	title = strings.TrimRight(input, "\r\n")
 	if container_type == "" {
@@ -1369,10 +1463,10 @@ func CmdCreateConsole() error {
 	console.Mode = "draft"
 	console.Type = container_type
 	console.Title = title
-	fmt.Printf("Creating console ...")
+	fmt.Printf(color("Creating console ...", "response"))
 	container_name, console_url := CreateConsole(access_token, console)
-	fmt.Printf("done. * %s \n", container_name)
-	fmt.Printf("%s \n", console_url)
+	fmt.Printf(color(" Done. * %s \n", "response"), container_name)
+	fmt.Printf(color("%s \n", "response"), console_url)
 	return nil
 }
 func main() {
@@ -1382,6 +1476,7 @@ func main() {
 	app.Name = "codepicnic"
 	app.Usage = "A CLI tool to manage your CodePicnic consoles"
 	var container_size, container_type, title, hostname, current_mode string
+	var console_id string
 
 	app.Action = func(c *cli.Context) error {
 		debug = false
@@ -1393,12 +1488,10 @@ func main() {
 		in := bufio.NewReader(os.Stdin)
 		input := ""
 		for input != "." {
-
-			fmt.Print("CodePicnic> ")
+			fmt.Print(color(str_prompt, "prompt"))
 			input, err := in.ReadString('\n')
-			input = strings.TrimRight(input, "\r\n")
+			input = TrimColor(input)
 			inputArgs := strings.Fields(input)
-			//fmt.Printf("inputargs %v \n", inputArgs)
 			if len(inputArgs) == 0 {
 				fmt.Println("Command not recognized. Have you tried 'help'?")
 			} else {
@@ -1416,38 +1509,85 @@ func main() {
 					CmdClearScreen()
 				case "mount":
 					cp_bin, _ := osext.Executable()
-					fmt.Printf("Mounting /app directory ... \n")
 					var mountbase string
-					if len(inputArgs) > 2 {
+					var mountpoint string
+					var input_unmount string
+					if len(inputArgs) < 2 {
+						console_id = GetConsoleFromPrompt()
+						mountbase = GetMountFromPrompt()
+					} else if len(inputArgs) > 2 {
+						console_id = inputArgs[1]
 						mountbase = inputArgs[2]
-					}
-					cmd := exec.Command("nohup", cp_bin, "mount", inputArgs[1], mountbase)
-					err = cmd.Start()
-					if err != nil {
-						fmt.Printf("Error %v", err)
 					} else {
-						var mountpoint string
-						if strings.HasPrefix(mountbase, "/") {
-							mountpoint = mountbase + "/" + inputArgs[1]
-						} else {
-							pwd, _ := os.Getwd()
-							mountpoint = pwd + "/" + mountbase + "/" + inputArgs[1]
-						}
-						fmt.Printf("/app directory mounted on %s \n", mountpoint)
-
+						console_id = inputArgs[1]
 					}
+					//check if console is already mounted
+					mountstat := GetMountsFromFile(console_id)
+					if mountstat == "" {
+						BgMountConsole(console_id, mountbase)
+					} else {
+						fmt.Printf(color("Container %s is already mounted in %s. \n", "response"), console_id, mountstat)
+						reader_unmount := bufio.NewReader(os.Stdin)
+						fmt.Printf(color("Do you want to unmount and then mount to a different directory? [ yes ]: ", "prompt"))
+						input, _ := reader_unmount.ReadString('\n')
+						input_unmount = TrimColor(input)
+						if input_unmount == "yes" || input_unmount == "" {
+							mountbase = GetMountFromPrompt()
+							CmdUnmountConsole(console_id)
+							BgMountConsole(console_id, mountbase)
+						}
+					}
+
+					/*f, err := os.Create("cmd.log")
+					cmd.Stdout = f
+					cmd.Stderr = f*/
 					//mountArgs := append(inputArgs[:0], inputArgs[1:]...)
 					//CmdMountConsole(mountArgs)
 				case "unmount":
-					CmdUnmountConsole(inputArgs[1])
+					if len(inputArgs) < 2 {
+						console_id = GetConsoleFromPrompt()
+					} else if len(inputArgs) > 2 {
+						//Error print help
+					} else {
+						console_id = inputArgs[1]
+					}
+					CmdUnmountConsole(console_id)
 				case "stop":
-					CmdStopConsole(inputArgs[1])
+					if len(inputArgs) < 2 {
+						console_id = GetConsoleFromPrompt()
+					} else if len(inputArgs) > 2 {
+						//Error print help
+					} else {
+						console_id = inputArgs[1]
+					}
+					CmdStopConsole(console_id)
 				case "start":
-					CmdStartConsole(inputArgs[1])
+					if len(inputArgs) < 2 {
+						console_id = GetConsoleFromPrompt()
+					} else if len(inputArgs) > 2 {
+						//Error print help
+					} else {
+						console_id = inputArgs[1]
+					}
+					CmdStartConsole(console_id)
 				case "restart":
-					CmdRestartConsole(inputArgs[1])
+					if len(inputArgs) < 2 {
+						console_id = GetConsoleFromPrompt()
+					} else if len(inputArgs) > 2 {
+						//Error print help
+					} else {
+						console_id = inputArgs[1]
+					}
+					CmdRestartConsole(console_id)
 				case "connect":
-					CmdConnectConsole(inputArgs[1])
+					if len(inputArgs) < 2 {
+						console_id = GetConsoleFromPrompt()
+					} else if len(inputArgs) > 2 {
+						//Error print help
+					} else {
+						console_id = inputArgs[1]
+					}
+					CmdConnectConsole(console_id)
 				case "create":
 					CmdCreateConsole()
 				case "configure":
@@ -1455,7 +1595,7 @@ func main() {
 				case "help":
 					cli.ShowAppHelp(c)
 				case "exit":
-					fmt.Println("Bye!")
+					fmt.Println(color("Bye!", "exit"))
 					panic(err)
 				default:
 					fmt.Println("Command not recognized. Have you tried 'help'?")
