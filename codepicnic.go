@@ -1508,9 +1508,7 @@ func main() {
 				case "clear", "cls":
 					CmdClearScreen()
 				case "mount":
-					cp_bin, _ := osext.Executable()
 					var mountbase string
-					var mountpoint string
 					var input_unmount string
 					if len(inputArgs) < 2 {
 						console_id = GetConsoleFromPrompt()
