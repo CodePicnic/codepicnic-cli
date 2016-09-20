@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/codegangsta/cli"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/docker/pkg/system"
 	"github.com/docker/engine-api/client"
 	"github.com/docker/engine-api/types"
 	"github.com/go-ini/ini"
@@ -21,6 +22,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"text/tabwriter"
+	"text/template"
 	//"os/signal"
 	"os/user"
 	"strconv"
@@ -70,6 +73,21 @@ var debug = true
 
 var cp_cache = cache.New(5*time.Minute, 30*time.Second)
 
+// https://github.com/docker/docker/blob/master/cli/command/container/cp.go
+func splitContainerFromPath(arg string) (container, path string) {
+	if system.IsAbs(arg) {
+		return "", arg
+	}
+
+	parts := strings.SplitN(arg, ":", 2)
+
+	if len(parts) == 1 || strings.HasPrefix(parts[0], ".") {
+		return "", arg
+	}
+
+	return parts[0], parts[1]
+}
+
 //color functions
 
 func color(s string, t string) string {
@@ -109,13 +127,24 @@ func color_prompt(s string) string {
 }
 func GetConsoleFromPrompt() string {
 	reader_console := bufio.NewReader(os.Stdin)
-	fmt.Print(color("Console Id [ ]: ", "prompt"))
+	fmt.Print(color("Console Id: ", "prompt"))
 	input, _ := reader_console.ReadString('\n')
 	return strings.TrimRight(input, "\r\n")
 }
 func GetMountFromPrompt() string {
 	reader_console := bufio.NewReader(os.Stdin)
 	fmt.Print(color("Mount Point [.]: ", "prompt"))
+	input, _ := reader_console.ReadString('\n')
+	return strings.TrimRight(input, "\r\n")
+}
+
+func GetFromPrompt(ask string, def string) string {
+	reader_console := bufio.NewReader(os.Stdin)
+	if def != "" {
+		def = " [" + def + "]"
+	}
+	//fmt.Print(color("%s %s: ", "prompt"), ask, def)
+	fmt.Printf(color("%s%s: ", "prompt"), ask, def)
 	input, _ := reader_console.ReadString('\n')
 	return strings.TrimRight(input, "\r\n")
 }
@@ -384,6 +413,17 @@ func ListConsoles(access_token string) []ConsoleJson {
 	//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
 	return console_collection.Consoles
 }
+
+func isValidConsole(token string, console string) (bool, error) {
+	consoles := ListConsoles(token)
+	for i := range consoles {
+		if console == consoles[i].ContainerName {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func JsonListConsoles(access_token string) string {
 
 	cp_consoles_url := site + "/api/consoles/all"
@@ -907,6 +947,26 @@ func (f *File) ReadFile() (string, error) {
 	return string(body), nil
 }
 
+func DownloadFileFromConsole(token string, console_id string, src string, dst string) error {
+	if dst == "" {
+		dst = src
+	}
+	cp_consoles_url := site + "/api/consoles/" + console_id + "/" + src
+
+	req, err := http.NewRequest("GET", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	ioutil.WriteFile(dst, body, 0644)
+	return nil
+}
+
 //var _ = fs.NodeOpener(&File{})
 var _ fs.NodeOpener = (*File)(nil)
 
@@ -999,19 +1059,10 @@ func (d *Dir) RemoveFile(file string) (err error) {
 
 func (f *File) UploadFile() (err error) {
 	cp_consoles_url := site + "/api/consoles/" + f.fs.container + "/upload_file"
-	// Prepare a form that you will submit to that URL.
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
-	// Add your image file
 	Debug("Upload Path", f.basedir)
 	Debug("Upload Name", f.name)
-	//fh, err := os.Open(f.mountpoint + "/" + f.path)
-	//fmt.Printf("Open %v \n", f.mountpoint+"/"+f.path)
-	//if err != nil {
-	//	fmt.Printf("Error 1 %v \n", err)
-	//	return err
-	//}
-	//defer fh.Close()
 	Debug("Upload Data", string(f.data))
 	temp_file, err := ioutil.TempFile(os.TempDir(), "cp_")
 	err = ioutil.WriteFile(temp_file.Name(), f.data, 0666)
@@ -1027,36 +1078,29 @@ func (f *File) UploadFile() (err error) {
 	if _, err = io.Copy(fw, temp_file); err != nil {
 		return
 	}
-	// Add the other fields
 	if fw, err = w.CreateFormField("path"); err != nil {
 		return
 	}
 	if _, err = fw.Write([]byte("/app/" + f.basedir + "/" + f.name)); err != nil {
 		return
 	}
-	// Don't forget to close the multipart writer.
-	// If you don't close it, your request will be missing the terminating boundary.
 	w.Close()
 
-	// Now that you have a form, you can submit it to your handler.
 	Debug("Upload url", cp_consoles_url)
 	req, err := http.NewRequest("POST", cp_consoles_url, &b)
 	if err != nil {
 		fmt.Printf("Error 3 %v \n", err)
 		return err
 	}
-	// Don't forget to set the content type, this will contain the boundary.
 	req.Header.Set("Authorization", "Bearer "+f.fs.token)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 
-	// Submit the request
 	client := &http.Client{}
 	res, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	Debug("Upload", strconv.Itoa(res.StatusCode))
-	// Check the response
 	if res.StatusCode != http.StatusOK {
 		err = fmt.Errorf("bad status: %s", res.Status)
 	}
@@ -1066,6 +1110,44 @@ func (f *File) UploadFile() (err error) {
 		log.Fatal(err)
 	}
 	return
+}
+
+func UploadFileToConsole(token string, console_id string, dst string, src string) (err error) {
+	if dst == "" {
+		dst = src
+	}
+	cp_consoles_url := site + "/api/consoles/" + console_id + "/upload_file"
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+	temp_file, err := os.Open(src)
+	fw, err := w.CreateFormFile("file", temp_file.Name())
+	if _, err = io.Copy(fw, temp_file); err != nil {
+		return
+	}
+	if fw, err = w.CreateFormField("path"); err != nil {
+		return
+	}
+	if _, err = fw.Write([]byte("/app/" + dst)); err != nil {
+		return
+	}
+	w.Close()
+	req, err := http.NewRequest("POST", cp_consoles_url, &b)
+	if err != nil {
+		fmt.Printf("Error 3 %v \n", err)
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode != http.StatusOK {
+		err = fmt.Errorf("bad status: %s", res.Status)
+	}
+	return nil
 }
 
 var _ = fs.NodeCreater(&Dir{})
@@ -1299,19 +1381,21 @@ func CmdStopConsole(console string) error {
 		CmdConfigure()
 		return nil
 	}
+	fmt.Printf(color("Stopping console %s ... ", "response"), console)
 	StopConsole(access_token, console)
+	fmt.Printf(color("Done.\n", "response"))
 	return nil
 }
 func CmdConfigure() error {
 	CreateConfigDir()
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf("Get your API Key from %s/dashboard/profile \n", site)
-	fmt.Print("Client ID: ")
+	fmt.Printf(color("Get your API Key from %s/dashboard/profile \n", "response"), site)
+	fmt.Print(color("Client ID: ", "prompt"))
 	input_id, _ := reader.ReadString('\n')
 	reader_secret := bufio.NewReader(os.Stdin)
-	fmt.Print("Client Secret: ")
+	fmt.Print(color("Client Secret: ", "prompt"))
 	input_secret, _ := reader_secret.ReadString('\n')
-	fmt.Print("Please wait, testing credentials... \n")
+	fmt.Print(color("Testing credentials... ", "response"))
 	client_id := strings.Trim(input_id, "\n")
 	client_secret := strings.Trim(input_secret, "\n")
 	access_token, err := GetTokenAccessFromCredentials(client_id, client_secret)
@@ -1319,11 +1403,11 @@ func CmdConfigure() error {
 		fmt.Println("Error: ", err)
 		return nil
 	}
-	fmt.Println("Token: ", access_token)
-	fmt.Print("Please wait, saving credentials... ")
+	fmt.Printf(color("Done. Token: %s", "response"), access_token)
+	fmt.Printf(color("Saving credentials... ", "response"))
 	SaveCredentialsToFile(client_id, client_secret)
 	SaveTokenToFile(access_token)
-	fmt.Println("Credentials saved \n")
+	fmt.Printf(color("Done. Credentials saved \n", "response"))
 	return nil
 }
 func CmdClearScreen() error {
@@ -1337,9 +1421,9 @@ func CmdStartConsole(console string) error {
 		CmdConfigure()
 		return nil
 	}
-	fmt.Printf(color("Starting console ...", "response"))
+	fmt.Printf(color("Starting console %s ... ", "response"), console)
 	StartConsole(access_token, console)
-	fmt.Printf(color(" Done. * %s \n", "response"), console)
+	fmt.Printf(color("Done.\n", "response"))
 	return nil
 }
 func CmdConnectConsole(console string) error {
@@ -1349,8 +1433,13 @@ func CmdConnectConsole(console string) error {
 		CmdConfigure()
 		return nil
 	}
-	StartConsole(access_token, console)
-	ConnectConsole(access_token, console)
+	if valid, _ := isValidConsole(access_token, console); valid {
+		StartConsole(access_token, console)
+		fmt.Printf(color("Connecting to  %s ... ", "response"), console)
+		ConnectConsole(access_token, console)
+	} else {
+		fmt.Printf(color("This is not a valid console. Please try again \n", "response"))
+	}
 	return nil
 }
 func CmdRestartConsole(console string) error {
@@ -1360,7 +1449,9 @@ func CmdRestartConsole(console string) error {
 		CmdConfigure()
 		return nil
 	}
+	fmt.Printf(color("Restarting console %s ... ", "response"), console)
 	RestartConsole(access_token, console)
+	fmt.Printf(color("Done.\n", "response"))
 	return nil
 }
 
@@ -1412,6 +1503,27 @@ func CmdUnmountConsole(console string) error {
 		return nil
 	}
 	UnmountConsole(access_token, console)
+	return nil
+}
+
+func CmdUploadToConsole(console_id string, dst string, src string) error {
+	access_token, _ := GetTokenAccess()
+	if access_token == "" {
+		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+		CmdConfigure()
+		return nil
+	}
+	UploadFileToConsole(access_token, console_id, dst, src)
+	return nil
+}
+func CmdDownloadFromConsole(console_id string, src string, dst string) error {
+	access_token, _ := GetTokenAccess()
+	if access_token == "" {
+		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+		CmdConfigure()
+		return nil
+	}
+	DownloadFileFromConsole(access_token, console_id, src, dst)
 	return nil
 }
 
@@ -1469,14 +1581,100 @@ func CmdCreateConsole() error {
 	fmt.Printf(color("%s \n", "response"), console_url)
 	return nil
 }
+
+type Person struct {
+	Id   int
+	Name string
+	Age  int
+}
+
+func (p *Person) Write(w io.Writer) {
+	b, _ := json.Marshal(*p)
+	w.Write(b)
+}
+
 func main() {
 	app := cli.NewApp()
-	//app.Version = "0.11"
+	cli.HelpPrinter = func(out io.Writer, templ string, data interface{}) {
+		funcMap := template.FuncMap{
+			"join": strings.Join,
+		}
+		var b bytes.Buffer
+		outbuf := bufio.NewWriter(&b)
+		w := tabwriter.NewWriter(outbuf, 1, 8, 2, ' ', 0)
+		t := template.Must(template.New("help").Funcs(funcMap).Parse(templ))
+		err := t.Execute(w, data)
+		if err != nil {
+			// If the writer is closed, t.Execute will fail, and there's nothing
+			// we can do to recover.
+			if os.Getenv("CLI_TEMPLATE_ERROR_DEBUG") != "" {
+				fmt.Printf("CLI TEMPLATE ERROR: %#v\n", err)
+			}
+			return
+		}
+
+		w.Flush()
+		outbuf.Flush()
+		//fmt.Printf("%v \n", b.String())
+		scanner := bufio.NewScanner(strings.NewReader(b.String()))
+		for scanner.Scan() {
+			//first line is the title
+			line := scanner.Text()
+			if strings.HasSuffix(line, ":") {
+				fmt.Println(color(line, "prompt"))
+			} else if strings.HasPrefix(line, "     ") || strings.HasPrefix(line, "   --") {
+				words := strings.Fields(line)
+				if len(words) > 0 {
+					iscommand := true
+					command := ""
+					for i := range words {
+						if iscommand == true {
+							command = command + " " + words[i]
+							if strings.HasSuffix(words[i], ",") {
+								iscommand = true
+							} else {
+								iscommand = false
+							}
+						}
+					}
+					command_line := strings.Replace(line, command, color(command, "data"), 1)
+					fmt.Println(command_line)
+				}
+			} else {
+				/*			} else if strings.HasPrefix(line, "   --") {
+							words := strings.Fields(line)
+							if len(words) > 0 {
+								iscommand := true
+								command := ""
+								for i := range words {
+									if iscommand == true {
+										command = command + " " + words[i]
+										if strings.HasSuffix(words[i], ",") {
+											iscommand = true
+										} else {
+											iscommand = false
+										}
+									}
+								}
+								command_line := strings.Replace(line, command, color(command, "data"), 1)
+								fmt.Println(command_line)
+							}
+						} else {*/
+				fmt.Println(color(line, "response"))
+
+			}
+
+			if err := scanner.Err(); err != nil {
+				fmt.Fprintln(os.Stderr, "reading standard input:", err)
+			}
+		}
+	}
 	app.Version = version
 	app.Name = "codepicnic"
 	app.Usage = "A CLI tool to manage your CodePicnic consoles"
 	var container_size, container_type, title, hostname, current_mode string
 	var console_id string
+	var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string
 
 	app.Action = func(c *cli.Context) error {
 		debug = false
@@ -1495,8 +1693,26 @@ func main() {
 			if len(inputArgs) == 0 {
 				fmt.Println("Command not recognized. Have you tried 'help'?")
 			} else {
-				switch inputArgs[0] {
-				case "list", "ls":
+				command := inputArgs[0]
+				switch command {
+				//case "clear", "cls":
+				case "clear":
+					CmdClearScreen()
+				//case "list", "ls":
+				case "configure":
+					CmdConfigure()
+				case "connect":
+					if len(inputArgs) < 2 {
+						console_id = GetConsoleFromPrompt()
+					} else if len(inputArgs) == 2 {
+						console_id = inputArgs[1]
+						//Error print help
+					} else {
+						cli.ShowCommandHelp(c, command)
+						break
+					}
+					CmdConnectConsole(console_id)
+				case "list":
 					if len(inputArgs) > 1 {
 						if inputArgs[2] == "json" {
 							format = "json"
@@ -1505,8 +1721,6 @@ func main() {
 						}
 					}
 					CmdListConsoles()
-				case "clear", "cls":
-					CmdClearScreen()
 				case "mount":
 					var mountbase string
 					var input_unmount string
@@ -1577,24 +1791,31 @@ func main() {
 						console_id = inputArgs[1]
 					}
 					CmdRestartConsole(console_id)
-				case "connect":
-					if len(inputArgs) < 2 {
-						console_id = GetConsoleFromPrompt()
-					} else if len(inputArgs) > 2 {
-						//Error print help
-					} else {
-						console_id = inputArgs[1]
-					}
-					CmdConnectConsole(console_id)
 				case "create":
 					CmdCreateConsole()
-				case "configure":
-					CmdConfigure()
 				case "help":
 					cli.ShowAppHelp(c)
 				case "exit":
 					fmt.Println(color("Bye!", "exit"))
 					panic(err)
+				case "copy":
+					if len(inputArgs) < 2 {
+						fmt.Printf(color("Copy a file from/to a console. Don't forget to include ':' after the Id of your console.\n", "response"))
+						copy_src = GetFromPrompt("Source", "")
+						copy_dst = GetFromPrompt("Destination", "")
+					} else if len(inputArgs) > 2 {
+						//Error print help
+					} else {
+						//Error print help
+					}
+					src_container, src_path = splitContainerFromPath(copy_src)
+					dst_container, dst_path = splitContainerFromPath(copy_dst)
+					if src_container != "" {
+						CmdDownloadFromConsole(src_container, src_path, dst_path)
+					}
+					if dst_container != "" {
+						CmdUploadToConsole(dst_container, dst_path, src_path)
+					}
 				default:
 					fmt.Println("Command not recognized. Have you tried 'help'?")
 				}
@@ -1613,6 +1834,41 @@ func main() {
 	}
 
 	app.Commands = []cli.Command{
+		{
+			Name: "clear",
+			//Aliases: []string{"cls"},
+			Usage: "clear screen",
+			Action: func(c *cli.Context) error {
+				CmdClearScreen()
+				return nil
+			},
+		},
+		{
+			Name:  "configure",
+			Usage: "save configuration",
+			Action: func(c *cli.Context) error {
+				CmdConfigure()
+				return nil
+			},
+		},
+		{
+			Name:  "connect",
+			Usage: "connect to a console",
+			Action: func(c *cli.Context) error {
+				CmdConnectConsole(c.Args()[0])
+				//fmt.Println(ProxyConsole(access_token, c.Args()[0]))
+				return nil
+			},
+		},
+		{
+			Name:  "copy",
+			Usage: "copy a file from/to a console",
+			Action: func(c *cli.Context) error {
+				fmt.Println("")
+				panic(nil)
+				return nil
+			},
+		},
 		{
 			Name: "create",
 			//Aliases: []string{"c"},
@@ -1695,9 +1951,18 @@ func main() {
 			},
 		},
 		{
-			Name:    "list",
-			Aliases: []string{"ls"},
-			Usage:   "list consoles",
+			Name:  "exit",
+			Usage: "exit the REPL",
+			Action: func(c *cli.Context) error {
+				fmt.Println("Bye!")
+				panic(nil)
+				return nil
+			},
+		},
+		{
+			Name: "list",
+			//Aliases: []string{"ls"},
+			Usage: "list consoles",
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:        "format",
@@ -1712,27 +1977,17 @@ func main() {
 			},
 		},
 		{
-			Name:    "clear",
-			Aliases: []string{"cls"},
-			Usage:   "clear screen",
-			Action: func(c *cli.Context) error {
-				ClearScreen()
-				return nil
+			Name:  "mount",
+			Usage: "mount /app filesystem from a container",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:        "debug",
+					Usage:       "Debugging",
+					Destination: &debug,
+				},
 			},
-		},
-		{
-			Name:  "stop",
-			Usage: "stop a console",
 			Action: func(c *cli.Context) error {
-				CmdStopConsole(c.Args()[0])
-				return nil
-			},
-		},
-		{
-			Name:  "start",
-			Usage: "start a console",
-			Action: func(c *cli.Context) error {
-				CmdStartConsole(c.Args()[0])
+				CmdMountConsole(c.Args())
 				return nil
 			},
 		},
@@ -1745,58 +2000,18 @@ func main() {
 			},
 		},
 		{
-			Name:  "configure",
-			Usage: "save configuration",
+			Name:  "start",
+			Usage: "start a console",
 			Action: func(c *cli.Context) error {
-				CmdConfigure()
+				CmdStartConsole(c.Args()[0])
 				return nil
 			},
 		},
 		{
-			Name:  "connect",
-			Usage: "connect to a console",
+			Name:  "stop",
+			Usage: "stop a console",
 			Action: func(c *cli.Context) error {
-				CmdConnectConsole(c.Args()[0])
-				//fmt.Println(ProxyConsole(access_token, c.Args()[0]))
-				return nil
-			},
-		},
-
-		{
-			Name:  "mount",
-			Usage: "mount /app filesystem from a container",
-			Flags: []cli.Flag{
-				cli.BoolFlag{
-					Name:        "debug",
-					Usage:       "Debugging",
-					Destination: &debug,
-				},
-			},
-			Action: func(c *cli.Context) error {
-				CmdMountConsole(c.Args())
-				/*
-					access_token, _ := GetTokenAccess()
-					if access_token == "" {
-						fmt.Printf("It looks like you didn't authorize your credentials. \n")
-						CmdConfigure()
-						return nil
-					}
-					StartConsole(access_token, c.Args()[0])
-					var mount_point string
-					if len(c.Args()) > 1 {
-						mount_point = c.Args()[1]
-					} else {
-						mount_point = ""
-					}
-					Debug("MountPoint", mount_point)
-					fmt.Printf("Mounting /app directory ... \n")
-					fmt.Printf("TIP: If you want to mount in the background please add \"&\" at the end of the mount command. \n")
-					MountConsole(access_token, c.Args()[0], mount_point)
-				*/
-				/*if err != nil {
-					fmt.Println("Error: ", err)
-					panic(err)
-				}*/
+				CmdStopConsole(c.Args()[0])
 				return nil
 			},
 		},
@@ -1825,46 +2040,6 @@ func main() {
 				return nil
 			},
 		},
-		{
-			Name:  "exit",
-			Usage: "exit the REPL",
-			Action: func(c *cli.Context) error {
-				fmt.Println("Bye!")
-				panic(nil)
-				return nil
-			},
-		},
-		/*
-			{
-				Name:  "files",
-				Usage: "list files from a container",
-				Action: func(c *cli.Context) error {
-					access_token, _ := GetTokenAccess()
-					StartConsole(access_token, c.Args()[0])
-					ListFiles(access_token, c.Args()[0], "")
-					return nil
-				},
-			},
-			{
-				Name:  "cat",
-				Usage: "cat contents from file",
-				Action: func(c *cli.Context) error {
-					access_token, _ := GetTokenAccess()
-					StartConsole(access_token, c.Args()[0])
-					//ReadFile(access_token, c.Args()[0], "")
-					return nil
-				},
-			},
-			{
-				Name:  "put",
-				Usage: "put contents to file",
-				Action: func(c *cli.Context) error {
-					access_token, _ := GetTokenAccess()
-					StartConsole(access_token, c.Args()[0])
-					//UploadFile(access_token, c.Args()[0], c.Args()[1], c.Args()[2])
-					return nil
-				},
-			},*/
 	}
 	app.Run(os.Args)
 }
