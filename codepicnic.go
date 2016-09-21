@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/codegangsta/cli"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -38,7 +37,6 @@ import (
 	"github.com/kardianos/osext"
 	"github.com/patrickmn/go-cache"
 	"path/filepath"
-	"runtime"
 	"syscall"
 	"time"
 )
@@ -48,13 +46,6 @@ import (
 const FragSeparator = ':'
 const cfg_dir = ".codepicnic"
 const cfg_file = "config"
-
-const COLOR_table = 188
-const COLOR_response = 81
-const COLOR_entry = 68
-const COLOR_off = 66
-const COLOR_on = 72
-const COLOR_prompt = 133
 
 var version string
 var site string
@@ -66,8 +57,6 @@ var format string
 //const swarm_host = "tcp://52.200.53.168:4000"
 
 //const swarm_host = "tcp://54.88.32.109:4000"
-
-const str_prompt = "CodePicnic> "
 
 var debug = true
 
@@ -86,136 +75,6 @@ func splitContainerFromPath(arg string) (container, path string) {
 	}
 
 	return parts[0], parts[1]
-}
-
-//color functions
-
-func color(s string, t string) string {
-	color_map := make(map[string]string)
-	color_map["table"] = "244"
-	color_map["response"] = "81"
-	color_map["entry"] = "68"
-	color_map["off"] = "66"
-	color_map["data"] = "72"
-	color_map["prompt"] = "133"
-	color_map["exit"] = "81"
-	esc_start := "\033[38;5;"
-	esc_m := "m"
-	esc_default := "\x1b[39m"
-	esc_end := "\033[38;5;68m"
-	esc_data := "\033[38;5;72m"
-	if t == "exit" {
-		return esc_start + color_map[t] + esc_m + s + esc_default
-	} else if t == "off" {
-		return esc_start + color_map[t] + esc_m + s + esc_data
-	} else {
-		return esc_start + color_map[t] + esc_m + s + esc_end
-	}
-}
-
-func TrimColor(s string) string {
-	s = strings.TrimRight(s, "\r\n")
-	s = strings.TrimLeft(s, "\033[38;5;68")
-	return s
-}
-
-func color_prompt(s string) string {
-	//if supportsColor() && !windows() {
-	return "\033[38;5;133m" + s + "\x1b[39m"
-	//}
-	//return s
-}
-func GetConsoleFromPrompt() string {
-	reader_console := bufio.NewReader(os.Stdin)
-	fmt.Print(color("Console Id: ", "prompt"))
-	input, _ := reader_console.ReadString('\n')
-	return strings.TrimRight(input, "\r\n")
-}
-func GetMountFromPrompt() string {
-	reader_console := bufio.NewReader(os.Stdin)
-	fmt.Print(color("Mount Point [.]: ", "prompt"))
-	input, _ := reader_console.ReadString('\n')
-	return strings.TrimRight(input, "\r\n")
-}
-
-func GetFromPrompt(ask string, def string) string {
-	reader_console := bufio.NewReader(os.Stdin)
-	if def != "" {
-		def = " [" + def + "]"
-	}
-	//fmt.Print(color("%s %s: ", "prompt"), ask, def)
-	fmt.Printf(color("%s%s: ", "prompt"), ask, def)
-	input, _ := reader_console.ReadString('\n')
-	return strings.TrimRight(input, "\r\n")
-}
-
-type Token struct {
-	Access  string `json:"access_token"`
-	Type    string `json:"token_type"`
-	Expires string `json:"expires_in"`
-	Created string `json:"created_at"`
-}
-
-type Console struct {
-	Url           string `json:"url"`
-	ContainerName string `json:"container_name"`
-}
-
-type ConsoleExtra struct {
-	Id       int
-	Title    string
-	Size     string
-	Type     string
-	Hostname string
-	Mode     string
-}
-
-type ConsoleJson struct {
-	Id            int    `json:"id"`
-	Content       string `json:"content"`
-	Title         string `json:"title"`
-	Name          string `json:"name"`
-	ContainerName string `json:"container_name"`
-	ContainerType string `json:"container_type"`
-	CustomImage   string `json:"custom_image"`
-	CreatedAt     string `json:"created_at"`
-	Permalink     string `json:"permalink"`
-	//Url           string `json:"url"`
-	//TerminalUrl   string `json:"terminal_url"`
-}
-
-type ConsoleCollection struct {
-	Consoles []ConsoleJson `json:"consoles"`
-}
-
-const CodepicnicAuthServer = "http://127.0.0.1:4001"
-
-var clear map[string]func()
-
-func init() {
-	clear = make(map[string]func())
-	clear["linux"] = func() {
-		cmd := exec.Command("clear")
-		cmd.Stdout = os.Stdout
-		cmd.Run()
-	}
-	clear["windows"] = func() {
-		cmd := exec.Command("cls")
-		cmd.Stdout = os.Stdout
-		cmd.Run()
-	}
-	clear["darwin"] = func() {
-		cmd := exec.Command("clear")
-		cmd.Stdout = os.Stdout
-		cmd.Run()
-	}
-}
-
-func ClearScreen() {
-	value, ok := clear[runtime.GOOS]
-	if ok {
-		value()
-	}
 }
 
 func Debug(print string, values ...string) error {
@@ -319,39 +178,6 @@ func getHomeDir() string {
 
 }
 
-func GetTokenAccess() (string, error) {
-	client_id, client_secret := GetCredentialsFromFile()
-	if client_id == "" || client_secret == "" {
-		return "", nil
-	}
-	access_token, err := GetTokenAccessFromCredentials(client_id, client_secret)
-	return access_token, err
-}
-
-func GetTokenAccessFromCredentials(client_id string, client_secret string) (string, error) {
-
-	cp_token_url := site + "/oauth/token"
-	//client_id, client_secret = GetCredentialsFromFile()
-	cp_payload := `{ "grant_type": "client_credentials","client_id": "` + client_id + `", "client_secret": "` + client_secret + `"}`
-	var jsonStr = []byte(cp_payload)
-	req, err := http.NewRequest("POST", cp_token_url, bytes.NewBuffer(jsonStr))
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	//fmt.Println("response Status:", resp.Status)
-	//fmt.Println("response Status:", resp.StatusCode)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode == 401 {
-		return "", errors.New("Not Authorized")
-	}
-	defer resp.Body.Close()
-	var token Token
-	_ = json.NewDecoder(resp.Body).Decode(&token)
-	return token.Access, nil
-}
-
 /*
 POST https://codepicnic.com/api/consoles HTTP/1.1
 Content-Type: application/json; charset=utf-8
@@ -385,63 +211,6 @@ func CreateConsole(access_token string, console_extra ConsoleExtra) (string, str
 	var console Console
 	_ = json.NewDecoder(resp.Body).Decode(&console)
 	return console.ContainerName, console.Url
-}
-
-func ListConsoles(access_token string) []ConsoleJson {
-
-	cp_consoles_url := site + "/api/consoles/all"
-	req, err := http.NewRequest("GET", cp_consoles_url, nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+access_token)
-	client := &http.Client{}
-	//fmt.Println(time.Now().Format("20060102150405"))
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	//fmt.Println("response Status:", resp.Status)
-	var console_collection ConsoleCollection
-	//var console_collection []ConsoleJson
-	body, err := ioutil.ReadAll(resp.Body)
-	err = json.Unmarshal(body, &console_collection)
-	if err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-	//_ = json.NewDecoder(resp.Body).Decode(&console_collection)
-	//fmt.Printf("%+v\n", string(body))
-	//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
-	return console_collection.Consoles
-}
-
-func isValidConsole(token string, console string) (bool, error) {
-	consoles := ListConsoles(token)
-	for i := range consoles {
-		if console == consoles[i].ContainerName {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func JsonListConsoles(access_token string) string {
-
-	cp_consoles_url := site + "/api/consoles/all"
-	req, err := http.NewRequest("GET", cp_consoles_url, nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+access_token)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-	//fmt.Printf("%+v\n", string(body))
-	return string(body)
 }
 
 func StopConsole(access_token string, container_name string) {
@@ -495,6 +264,7 @@ func RestartConsole(access_token string, container_name string) {
 	return
 }
 
+/*
 func ProxyConsole(access_token string, container_name string) string {
 
 	cp_connect_url := CodepicnicAuthServer + "/connect/" + container_name
@@ -510,8 +280,7 @@ func ProxyConsole(access_token string, container_name string) string {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	return string(body)
-}
-
+}*/
 func ConnectConsole(access_token string, container_name string) {
 
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
@@ -1673,154 +1442,9 @@ func main() {
 	app.Name = "codepicnic"
 	app.Usage = "A CLI tool to manage your CodePicnic consoles"
 	var container_size, container_type, title, hostname, current_mode string
-	var console_id string
-	var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string
 
 	app.Action = func(c *cli.Context) error {
-		debug = false
-		access_token, _ := GetTokenAccess()
-		if access_token == "" {
-			fmt.Printf("It looks like you didn't authorize your credentials. \n")
-			CmdConfigure()
-		}
-		in := bufio.NewReader(os.Stdin)
-		input := ""
-		for input != "." {
-			fmt.Print(color(str_prompt, "prompt"))
-			input, err := in.ReadString('\n')
-			input = TrimColor(input)
-			inputArgs := strings.Fields(input)
-			if len(inputArgs) == 0 {
-				fmt.Println("Command not recognized. Have you tried 'help'?")
-			} else {
-				command := inputArgs[0]
-				switch command {
-				//case "clear", "cls":
-				case "clear":
-					CmdClearScreen()
-				//case "list", "ls":
-				case "configure":
-					CmdConfigure()
-				case "connect":
-					if len(inputArgs) < 2 {
-						console_id = GetConsoleFromPrompt()
-					} else if len(inputArgs) == 2 {
-						console_id = inputArgs[1]
-						//Error print help
-					} else {
-						cli.ShowCommandHelp(c, command)
-						break
-					}
-					CmdConnectConsole(console_id)
-				case "list":
-					if len(inputArgs) > 1 {
-						if inputArgs[2] == "json" {
-							format = "json"
-						} else {
-							format = "text"
-						}
-					}
-					CmdListConsoles()
-				case "mount":
-					var mountbase string
-					var input_unmount string
-					if len(inputArgs) < 2 {
-						console_id = GetConsoleFromPrompt()
-						mountbase = GetMountFromPrompt()
-					} else if len(inputArgs) > 2 {
-						console_id = inputArgs[1]
-						mountbase = inputArgs[2]
-					} else {
-						console_id = inputArgs[1]
-					}
-					//check if console is already mounted
-					mountstat := GetMountsFromFile(console_id)
-					if mountstat == "" {
-						BgMountConsole(console_id, mountbase)
-					} else {
-						fmt.Printf(color("Container %s is already mounted in %s. \n", "response"), console_id, mountstat)
-						reader_unmount := bufio.NewReader(os.Stdin)
-						fmt.Printf(color("Do you want to unmount and then mount to a different directory? [ yes ]: ", "prompt"))
-						input, _ := reader_unmount.ReadString('\n')
-						input_unmount = TrimColor(input)
-						if input_unmount == "yes" || input_unmount == "" {
-							mountbase = GetMountFromPrompt()
-							CmdUnmountConsole(console_id)
-							BgMountConsole(console_id, mountbase)
-						}
-					}
-
-					/*f, err := os.Create("cmd.log")
-					cmd.Stdout = f
-					cmd.Stderr = f*/
-					//mountArgs := append(inputArgs[:0], inputArgs[1:]...)
-					//CmdMountConsole(mountArgs)
-				case "unmount":
-					if len(inputArgs) < 2 {
-						console_id = GetConsoleFromPrompt()
-					} else if len(inputArgs) > 2 {
-						//Error print help
-					} else {
-						console_id = inputArgs[1]
-					}
-					CmdUnmountConsole(console_id)
-				case "stop":
-					if len(inputArgs) < 2 {
-						console_id = GetConsoleFromPrompt()
-					} else if len(inputArgs) > 2 {
-						//Error print help
-					} else {
-						console_id = inputArgs[1]
-					}
-					CmdStopConsole(console_id)
-				case "start":
-					if len(inputArgs) < 2 {
-						console_id = GetConsoleFromPrompt()
-					} else if len(inputArgs) > 2 {
-						//Error print help
-					} else {
-						console_id = inputArgs[1]
-					}
-					CmdStartConsole(console_id)
-				case "restart":
-					if len(inputArgs) < 2 {
-						console_id = GetConsoleFromPrompt()
-					} else if len(inputArgs) > 2 {
-						//Error print help
-					} else {
-						console_id = inputArgs[1]
-					}
-					CmdRestartConsole(console_id)
-				case "create":
-					CmdCreateConsole()
-				case "help":
-					cli.ShowAppHelp(c)
-				case "exit":
-					fmt.Println(color("Bye!", "exit"))
-					panic(err)
-				case "copy":
-					if len(inputArgs) < 2 {
-						fmt.Printf(color("Copy a file from/to a console. Don't forget to include ':' after the Id of your console.\n", "response"))
-						copy_src = GetFromPrompt("Source", "")
-						copy_dst = GetFromPrompt("Destination", "")
-					} else if len(inputArgs) > 2 {
-						//Error print help
-					} else {
-						//Error print help
-					}
-					src_container, src_path = splitContainerFromPath(copy_src)
-					dst_container, dst_path = splitContainerFromPath(copy_dst)
-					if src_container != "" {
-						CmdDownloadFromConsole(src_container, src_path, dst_path)
-					}
-					if dst_container != "" {
-						CmdUploadToConsole(dst_container, dst_path, src_path)
-					}
-				default:
-					fmt.Println("Command not recognized. Have you tried 'help'?")
-				}
-			}
-		}
+		Repl(c)
 
 		// Create the repl, add command state machines, and start the repl.
 		/*repl := replizer.NewRepl()
