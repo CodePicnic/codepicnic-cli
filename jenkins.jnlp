@@ -1,0 +1,1 @@
+java -jar slave.jar -jnlpUrl http://jenkins.codepicnic.com/computer/macos-01/slave-agent.jnlp -secret 8e1db44126ba3d14b5c4dee05abf6be8801837e27420e3d4ea6280275e8cfc68
