@@ -153,7 +153,7 @@ func Repl(c *cli.Context) {
 						format = "text"
 					}
 				}
-				cmdListConsoles()
+				CmdListConsoles()
 			case "mount":
 				var mountbase string
 				var input_unmount string
