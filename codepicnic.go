@@ -286,12 +286,13 @@ func ConnectConsole(access_token string, container_name string) {
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
 	cli, err := client.NewClient(swarm_host, "v1.22", nil, defaultHeaders)
 	if err != nil {
+		fmt.Println("e1", err)
 		panic(err)
 	}
 	//r, err := cli.ContainerInspect(context.Background(), container_name)
 	r, err := cli.ContainerExecCreate(context.Background(), container_name, types.ExecConfig{User: "", Cmd: []string{"bash"}, Tty: true, AttachStdin: true, AttachStderr: true, AttachStdout: true, Detach: false})
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("e2", err)
 		panic(err)
 	}
 	//fmt.Println(r.ID)
@@ -299,7 +300,7 @@ func ConnectConsole(access_token string, container_name string) {
 	aResp, err := cli.ContainerExecAttach(context.Background(), r.ID, types.ExecConfig{Tty: true, Detach: false})
 
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("e3", err)
 		panic(err)
 	}
 	tty := true
@@ -324,12 +325,17 @@ func ConnectConsole(access_token string, container_name string) {
 	go func() {
 		if os.Stdin != nil {
 			io.Copy(aResp.Conn, os.Stdin)
+			fmt.Printf("stdinDone\n")
 		}
 
 		if err := aResp.CloseWrite(); err != nil {
-			log.Fatalf("Couldn't send EOF: %s", err)
+			if strings.HasSuffix(err.Error(), "use of closed network connection") {
+				//Connection already closed
+			} else {
+				log.Fatalf("Couldn't send EOF: %s", err)
+			}
 		}
-		close(stdinDone)
+		//close(stdinDone)
 	}()
 
 	select {
@@ -344,7 +350,10 @@ func ConnectConsole(access_token string, container_name string) {
 			}
 		}
 	}
-
+	close(stdinDone)
+	stdinw := bufio.NewReader(os.Stdin)
+	fmt.Printf("done\n")
+	aResp.Conn.Close()
 	return
 }
 
@@ -1172,11 +1181,11 @@ func CmdConfigure() error {
 		fmt.Println("Error: ", err)
 		return nil
 	}
-	fmt.Printf(color("Done. Token: %s", "response"), access_token)
+	fmt.Printf(color("Done. Token: %s \n", "response"), access_token)
 	fmt.Printf(color("Saving credentials... ", "response"))
 	SaveCredentialsToFile(client_id, client_secret)
 	SaveTokenToFile(access_token)
-	fmt.Printf(color("Done. Credentials saved \n", "response"))
+	fmt.Printf(color("Done.\n", "response"))
 	return nil
 }
 func CmdClearScreen() error {
