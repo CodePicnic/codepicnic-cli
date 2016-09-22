@@ -23,6 +23,7 @@ func color(s string, t string) string {
 	color_map["data"] = "72"
 	color_map["prompt"] = "133"
 	color_map["exit"] = "81"
+	color_map["error"] = "196"
 	esc_start := "\033[38;5;"
 	esc_m := "m"
 	esc_default := "\x1b[39m"
@@ -103,9 +104,16 @@ func Repl(c *cli.Context) {
 	var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string
 
 	debug = false
-	access_token, _ := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
+	access_token, err := GetTokenAccess()
+	if err != nil {
+		if strings.Contains(err.Error(), "Disconnected") {
+			fmt.Println(color("Can't connect to the CodePicnic API. Please verify your connection or try again.", "error"))
+		} else if strings.Contains(err.Error(), "Not Authorized") {
+			fmt.Println(color("It looks like you didn't authorize your credentials.", "error"))
+			CmdConfigure()
+		}
+	} else if access_token == "" {
+		fmt.Println(color("It looks like you didn't authorize your credentials.", "error"))
 		CmdConfigure()
 	}
 	in := bufio.NewReader(os.Stdin)
@@ -145,7 +153,7 @@ func Repl(c *cli.Context) {
 						format = "text"
 					}
 				}
-				CmdListConsoles()
+				cmdListConsoles()
 			case "mount":
 				var mountbase string
 				var input_unmount string

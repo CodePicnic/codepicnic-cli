@@ -97,34 +97,6 @@ func CreateConfigDir() {
 	}
 }
 
-func GetCredentialsFromFile() (client_id string, client_secret string) {
-	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-	if err != nil {
-		return
-	}
-	client_id = cfg.Section("credentials").Key("client_id").String()
-	client_secret = cfg.Section("credentials").Key("client_secret").String()
-	return
-
-}
-
-func SaveCredentialsToFile(client_id string, client_secret string) {
-	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-	if err != nil {
-		panic(err)
-	}
-	cfg.Section("credentials").Key("client_id").SetValue(client_id)
-	cfg.Section("credentials").Key("client_secret").SetValue(client_secret)
-	//fmt.Println(getHomeDir() + "/.codepicnic/credentials")
-	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-
-	if err != nil {
-		panic(err)
-	}
-	return
-
-}
-
 func SaveMountsToFile(container string, mountpoint string) {
 
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
@@ -200,7 +172,7 @@ func CreateConsole(access_token string, console_extra ConsoleExtra) (string, str
 	cp_payload := ` { "console": { "container_size": "` + console_extra.Size + `", "container_type": "` + console_extra.Type + `", "title": "` + console_extra.Title + `" , "hostname": "` + console_extra.Hostname + `", "current_mode": "` + console_extra.Mode + `" }  }`
 	var jsonStr = []byte(cp_payload)
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
-	req.Header.Set("Content-Type", "application/json")
+	//req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -325,7 +297,7 @@ func ConnectConsole(access_token string, container_name string) {
 	go func() {
 		if os.Stdin != nil {
 			io.Copy(aResp.Conn, os.Stdin)
-			fmt.Printf("stdinDone\n")
+			//fmt.Printf("stdinDone\n")
 		}
 
 		if err := aResp.CloseWrite(); err != nil {
@@ -352,7 +324,7 @@ func ConnectConsole(access_token string, container_name string) {
 	}
 	close(stdinDone)
 	//stdinw := bufio.NewReader(os.Stdin)
-	fmt.Printf("done\n")
+	//fmt.Printf("done\n")
 	aResp.Conn.Close()
 	return
 }
@@ -463,7 +435,7 @@ func ListFiles(access_token string, container_name string, path string) []File {
 }
 
 //func UnmountConsole(access_token string, container_name string, mount_dir string) error {
-func UnmountConsole(access_token string, container_name string) error {
+func UnmountConsole(container_name string) error {
 	mountpoint := GetMountsFromFile(container_name)
 	if mountpoint == "" {
 		fmt.Printf("A mount point for container %s doesn't exist\n", container_name)
@@ -1092,20 +1064,32 @@ func addNewCommand(repl *replizer.Repl, instr string, startFn replizer.CommandSt
 	})
 }*/
 
-func CmdListConsoles() error {
+//CmdGetTokenAccess will get a new token or validate the credentials if needed
+//Apply before execute
+func CmdGetTokenAccess() (string, error) {
 
 	access_token, err := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
-		CmdConfigure()
-		return nil
-	}
-	SaveTokenToFile(access_token)
 	if err != nil {
-		fmt.Println("Error: ", err)
-		panic(err)
+		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+			fmt.Println(color("It looks like you didn't authorize your credentials.", "error"))
+			CmdConfigure()
+			access_token = GetTokenAccessFromFile()
+			return access_token, nil
+		} else if strings.Contains(err.Error(), ERROR_NOT_CONNECTED) {
+			fmt.Println(color("Can't connect to the CodePicnic API. Please try again", "error"))
+		}
 	}
+	return access_token, nil
 
+}
+
+func CmdListConsoles() error {
+
+	//access_token, err := GetTokenAccess()
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
+	}
 	//fmt.Printf("%#v\n", consoles[0].Title)
 	if format == "json" {
 		consoles := JsonListConsoles(access_token)
@@ -1114,7 +1098,13 @@ func CmdListConsoles() error {
 
 	} else {
 
-		consoles := ListConsoles(access_token)
+		consoles, err := ListConsoles(access_token)
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_INVALID_TOKEN) {
+				access_token, err = CmdGetTokenAccess()
+				consoles, err = ListConsoles(access_token)
+			}
+		}
 		output := []string{
 			"CONSOLE ID |TITLE|TYPE|CREATED|MOUNTED|URL",
 		}
@@ -1153,11 +1143,9 @@ func CmdListConsoles() error {
 }
 
 func CmdStopConsole(console string) error {
-	access_token, _ := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
-		CmdConfigure()
-		return nil
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
 	}
 	fmt.Printf(color("Stopping console %s ... ", "response"), console)
 	StopConsole(access_token, console)
@@ -1193,11 +1181,9 @@ func CmdClearScreen() error {
 	return nil
 }
 func CmdStartConsole(console string) error {
-	access_token, _ := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
-		CmdConfigure()
-		return nil
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
 	}
 	fmt.Printf(color("Starting console %s ... ", "response"), console)
 	StartConsole(access_token, console)
@@ -1205,11 +1191,9 @@ func CmdStartConsole(console string) error {
 	return nil
 }
 func CmdConnectConsole(console string) error {
-	access_token, _ := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
-		CmdConfigure()
-		return nil
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
 	}
 	if valid, _ := isValidConsole(access_token, console); valid {
 		StartConsole(access_token, console)
@@ -1221,11 +1205,9 @@ func CmdConnectConsole(console string) error {
 	return nil
 }
 func CmdRestartConsole(console string) error {
-	access_token, _ := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
-		CmdConfigure()
-		return nil
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
 	}
 	fmt.Printf(color("Restarting console %s ... ", "response"), console)
 	RestartConsole(access_token, console)
@@ -1235,11 +1217,9 @@ func CmdRestartConsole(console string) error {
 
 func CmdMountConsole(args []string) error {
 
-	access_token, _ := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
-		CmdConfigure()
-		return nil
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
 	}
 	StartConsole(access_token, args[0])
 	mountpoint := GetMountsFromFile(args[0])
@@ -1274,32 +1254,22 @@ func CmdMountConsole(args []string) error {
 	return nil
 }
 func CmdUnmountConsole(console string) error {
-	access_token, _ := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
-		CmdConfigure()
-		return nil
-	}
-	UnmountConsole(access_token, console)
+	UnmountConsole(console)
 	return nil
 }
 
 func CmdUploadToConsole(console_id string, dst string, src string) error {
-	access_token, _ := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
-		CmdConfigure()
-		return nil
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
 	}
 	UploadFileToConsole(access_token, console_id, dst, src)
 	return nil
 }
 func CmdDownloadFromConsole(console_id string, src string, dst string) error {
-	access_token, _ := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
-		CmdConfigure()
-		return nil
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
 	}
 	DownloadFileFromConsole(access_token, console_id, src, dst)
 	return nil
@@ -1324,11 +1294,9 @@ func BgMountConsole(console_id string, mountbase string) {
 	}
 }
 func CmdCreateConsole() error {
-	access_token, _ := GetTokenAccess()
-	if access_token == "" {
-		fmt.Printf("It looks like you didn't authorize your credentials. \n")
-		CmdConfigure()
-		return nil
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
 	}
 	var console ConsoleExtra
 	container_type := "bash"
@@ -1544,13 +1512,13 @@ func main() {
 
 			Action: func(c *cli.Context) error {
 				access_token, err := GetTokenAccess()
+				if err != nil {
+					return nil
+				}
 				if access_token == "" {
 					fmt.Printf("It looks like you didn't authorize your credentials. \n")
 					CmdConfigure()
 					return nil
-				}
-				if err != nil {
-					fmt.Println("Error: ", err)
 				}
 				var console ConsoleExtra
 

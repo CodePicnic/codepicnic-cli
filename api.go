@@ -5,9 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-ini/ini"
 	"io/ioutil"
 	"net/http"
+	"strings"
 )
+
+const ERROR_NOT_AUTHORIZED = "Not Authorized"
+const ERROR_NOT_CONNECTED = "Disconnected"
+const ERROR_EMPTY_CREDENTIALS = "No Credentials"
+const ERROR_EMPTY_TOKEN = "No Token"
+const ERROR_INVALID_TOKEN = "Invalid Token"
+
+const TOKEN_LEN = 64
 
 type Token struct {
 	Access  string `json:"access_token"`
@@ -51,7 +61,7 @@ type ConsoleCollection struct {
 func GetTokenAccess() (string, error) {
 	client_id, client_secret := GetCredentialsFromFile()
 	if client_id == "" || client_secret == "" {
-		return "", nil
+		return "", errors.New(ERROR_EMPTY_CREDENTIALS)
 	}
 	access_token, err := GetTokenAccessFromCredentials(client_id, client_secret)
 	return access_token, err
@@ -67,21 +77,61 @@ func GetTokenAccessFromCredentials(client_id string, client_secret string) (stri
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{}
 	resp, err := client.Do(req)
+	if err != nil {
+		if strings.Contains(err.Error(), "read: connection refused") {
+			fmt.Println(color("Can't connect to the CodePicnic API. Please verify your connection or try again.", "error"))
+			return "", errors.New(ERROR_NOT_CONNECTED)
+		}
+	}
 	//fmt.Println("response Status:", resp.Status)
 	//fmt.Println("response Status:", resp.StatusCode)
-	if err != nil {
-		return "", err
-	}
 	if resp.StatusCode == 401 {
-		return "", errors.New("Not Authorized")
+		return "", errors.New(ERROR_NOT_AUTHORIZED)
 	}
 	defer resp.Body.Close()
 	var token Token
 	_ = json.NewDecoder(resp.Body).Decode(&token)
+	SaveTokenToFile(token.Access)
 	return token.Access, nil
 }
 
-func ListConsoles(access_token string) []ConsoleJson {
+func GetCredentialsFromFile() (client_id string, client_secret string) {
+	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
+	if err != nil {
+		return
+	}
+	client_id = cfg.Section("credentials").Key("client_id").String()
+	client_secret = cfg.Section("credentials").Key("client_secret").String()
+	return
+}
+
+func GetTokenAccessFromFile() (token string) {
+	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
+	if err != nil {
+		return
+	}
+	token = cfg.Section("credentials").Key("access_token").String()
+	return
+}
+
+func SaveCredentialsToFile(client_id string, client_secret string) {
+	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
+	if err != nil {
+		panic(err)
+	}
+	cfg.Section("credentials").Key("client_id").SetValue(client_id)
+	cfg.Section("credentials").Key("client_secret").SetValue(client_secret)
+	//fmt.Println(getHomeDir() + "/.codepicnic/credentials")
+	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
+
+	if err != nil {
+		panic(err)
+	}
+	return
+
+}
+
+func ListConsoles(access_token string) ([]ConsoleJson, error) {
 
 	cp_consoles_url := site + "/api/consoles/all"
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
@@ -94,7 +144,9 @@ func ListConsoles(access_token string) []ConsoleJson {
 		panic(err)
 	}
 	defer resp.Body.Close()
-	//fmt.Println("response Status:", resp.Status)
+	if resp.StatusCode == 401 {
+		return nil, errors.New(ERROR_INVALID_TOKEN)
+	}
 	var console_collection ConsoleCollection
 	//var console_collection []ConsoleJson
 	body, err := ioutil.ReadAll(resp.Body)
@@ -105,11 +157,11 @@ func ListConsoles(access_token string) []ConsoleJson {
 	//_ = json.NewDecoder(resp.Body).Decode(&console_collection)
 	//fmt.Printf("%+v\n", string(body))
 	//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
-	return console_collection.Consoles
+	return console_collection.Consoles, nil
 }
 
 func isValidConsole(token string, console string) (bool, error) {
-	consoles := ListConsoles(token)
+	consoles, _ := ListConsoles(token)
 	for i := range consoles {
 		if console == consoles[i].ContainerName {
 			return true, nil
