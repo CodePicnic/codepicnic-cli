@@ -351,7 +351,7 @@ func ConnectConsole(access_token string, container_name string) {
 		}
 	}
 	close(stdinDone)
-	stdinw := bufio.NewReader(os.Stdin)
+	//stdinw := bufio.NewReader(os.Stdin)
 	fmt.Printf("done\n")
 	aResp.Conn.Close()
 	return
