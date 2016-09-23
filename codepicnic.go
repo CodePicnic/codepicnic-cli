@@ -445,8 +445,15 @@ func main() {
 			Name:  "connect",
 			Usage: "connect to a console",
 			Action: func(c *cli.Context) error {
-				CmdConnectConsole(c.Args()[0])
-				//fmt.Println(ProxyConsole(access_token, c.Args()[0]))
+				var console string
+				if c.NArg() == 0 {
+					console = GetFromPrompt("Console Id", "")
+				} else if c.NArg() == 1 {
+					console = c.Args().Get(0)
+				} else {
+					//print error
+				}
+				CmdConnectConsole(console)
 				return nil
 			},
 		},
@@ -454,8 +461,26 @@ func main() {
 			Name:  "copy",
 			Usage: "copy a file from/to a console",
 			Action: func(c *cli.Context) error {
-				fmt.Println("")
-				panic(nil)
+				var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string
+				if c.NArg() == 0 {
+					fmt.Printf(color("Copy a file from/to a console. Don't forget to include ':' after the Id of your console.\n", "response"))
+					copy_src = GetFromPrompt("Source", "")
+					copy_dst = GetFromPrompt("Destination", "")
+				} else if c.NArg() == 2 {
+					copy_src = c.Args().Get(0)
+					copy_dst = c.Args().Get(1)
+				} else {
+					//print error
+				}
+				src_container, src_path = splitContainerFromPath(copy_src)
+				dst_container, dst_path = splitContainerFromPath(copy_dst)
+				if src_container != "" {
+					CmdDownloadFromConsole(src_container, src_path, dst_path)
+				}
+				if dst_container != "" {
+					CmdUploadToConsole(dst_container, dst_path, src_path)
+				}
+
 				return nil
 			},
 		},
@@ -541,11 +566,32 @@ func main() {
 			},
 		},
 		{
+			Name:      "exec",
+			Usage:     "exec a command into console",
+			ArgsUsage: "[console_id] \"[command]\"",
+			Action: func(c *cli.Context) error {
+				var console, command string
+				if c.NArg() == 0 {
+					console = GetFromPrompt("Console Id", "")
+					command = GetFromPrompt("Command", "")
+				} else if c.NArg() == 1 {
+					console = c.Args().Get(0)
+					command = GetFromPrompt("Command", "")
+				} else if c.NArg() == 2 {
+					console = c.Args().Get(0)
+					command = c.Args().Get(1)
+				} else {
+					return nil
+				}
+				CmdExecConsole(console, command)
+				return nil
+			},
+		},
+		{
 			Name:  "exit",
 			Usage: "exit the REPL",
 			Action: func(c *cli.Context) error {
-				fmt.Println("Bye!")
-				panic(nil)
+				fmt.Println(color("Bye!", "exit"))
 				return nil
 			},
 		},
@@ -632,4 +678,5 @@ func main() {
 		},
 	}
 	app.Run(os.Args)
+	color_exit()
 }

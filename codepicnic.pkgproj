@@ -413,7 +413,7 @@
 												<key>GID</key>
 												<integer>0</integer>
 												<key>PATH</key>
-												<string>/Users/hdanniel/codepicnic-cli/codepicnic</string>
+												<string>codepicnic</string>
 												<key>PATH_TYPE</key>
 												<integer>0</integer>
 												<key>PERMISSIONS</key>
@@ -489,7 +489,7 @@
 			<key>POSTINSTALL_PATH</key>
 			<dict>
 				<key>PATH</key>
-				<string>/Users/hdanniel/codepicnic-cli/codepicnic-post.sh</string>
+				<string>codepicnic-post.sh</string>
 				<key>PATH_TYPE</key>
 				<integer>0</integer>
 			</dict>

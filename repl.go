@@ -38,6 +38,11 @@ func color(s string, t string) string {
 	}
 }
 
+func color_exit() {
+	esc_default := "\x1b[39m"
+	fmt.Printf(esc_default)
+	return
+}
 func TrimColor(s string) string {
 	s = strings.TrimRight(s, "\r\n")
 	s = strings.TrimLeft(s, "\033[38;5;68")
