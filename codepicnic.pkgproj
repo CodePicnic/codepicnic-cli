@@ -413,7 +413,7 @@
 												<key>GID</key>
 												<integer>0</integer>
 												<key>PATH</key>
-												<string>codepicnic</string>
+                                                <string>/Users/jenkins/jenkins_slave/workspace/publish-codepicnic-cli-osx/codepicnic</string>
 												<key>PATH_TYPE</key>
 												<integer>0</integer>
 												<key>PERMISSIONS</key>
@@ -489,7 +489,7 @@
 			<key>POSTINSTALL_PATH</key>
 			<dict>
 				<key>PATH</key>
-				<string>codepicnic-post.sh</string>
+                <string>/Users/jenkins/jenkins_slave/workspace/publish-codepicnic-cli-osx/codepicnic-post.sh</string>
 				<key>PATH_TYPE</key>
 				<integer>0</integer>
 			</dict>
