@@ -231,6 +231,16 @@ func Repl(c *cli.Context) {
 			case "exit":
 				fmt.Println(color("Bye!", "exit"))
 				panic(err)
+			case "exec":
+				if len(inputArgs) < 2 {
+					console_id = GetFromPrompt("Console Id", "")
+					command = GetFromPrompt("Command", "")
+				} else if len(inputArgs) > 2 {
+					//Error print help
+				} else {
+					//Error print help
+				}
+				CmdExecConsole(console_id, command)
 			case "copy":
 				if len(inputArgs) < 2 {
 					fmt.Printf(color("Copy a file from/to a console. Don't forget to include ':' after the Id of your console.\n", "response"))

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Jeffail/gabs"
 	"github.com/go-ini/ini"
 	"io/ioutil"
 	"net/http"
@@ -188,4 +189,42 @@ func JsonListConsoles(access_token string) string {
 	}
 	//fmt.Printf("%+v\n", string(body))
 	return string(body)
+}
+
+type JsonCommand struct {
+	command string
+	result  string
+}
+
+func ExecConsole(token string, console string, command string) ([]JsonCommand, error) {
+	cp_consoles_url := site + "/api/consoles/" + console + "/exec"
+	cp_payload := ` { "commands": "` + command + `" }`
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	var CmdCollection []JsonCommand
+
+	jsonBody, err := gabs.ParseJSON(body)
+	jsonPaths, _ := jsonBody.ChildrenMap()
+	for key, child := range jsonPaths {
+		var cmd JsonCommand
+		cmd.command = string(key)
+		cmd.result = child.Data().(string)
+		//Debug("key, value, type", key, child.Data().(string), jsonTypes[jsonFile.path])
+		//Debug("key, value, type", key, child.Data().(string), jsonFile.mime)
+		CmdCollection = append(CmdCollection, cmd)
+
+	}
+
+	//fmt.Printf("%+v\n", string(body))
+	return CmdCollection, nil
 }
