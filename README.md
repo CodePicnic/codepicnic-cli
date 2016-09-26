@@ -34,7 +34,7 @@ Run this from your terminal
 
 All command run in CLI or REPL Mode. If you don't enter parameters, the program will ask for them.
 
-* clear      clear screen
+* clear:      clear screen
 * configure  save configuration
 * connect    connect to a console
 * copy       copy a file from/to a console
