@@ -1,6 +1,12 @@
 ## Installation
 
-On Ubuntu: 
+OS X:
+
+Download and run the [OS X installer](https://apt.codepicnic.com/CodePicnic.pkg) .
+
+Ubuntu: 
+
+Run this from your terminal
 
     wget -O- http://apt.codepicnic.com/codepicnic-cli-ubuntu.sh  | sh
     
