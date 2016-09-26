@@ -1,10 +1,10 @@
 ## Installation
 
-OS X:
+###OS X:
 
 Download and run the [OS X installer](https://apt.codepicnic.com/CodePicnic.pkg) .
 
-Ubuntu: 
+###Ubuntu: 
 
 Run this from your terminal
 
