@@ -35,18 +35,18 @@ Run this from your terminal
 All command run in CLI or REPL Mode. If you don't enter parameters, the program will ask for them.
 
 * clear:      clear screen
-* configure  save configuration
-* connect    connect to a console
-* copy       copy a file from/to a console
-* create     create and start a new console
-* exit       exit the REPL
-* help, h    Shows a list of commands or help for one command
-* list       list consoles
-* mount      mount /app filesystem from a container
-* restart    restart a console
-* start      start a console
-* stop       stop a console
-* unmount    unmount /app filesystem from a container
+* configure:  save configuration
+* connect:    connect to a console
+* copy:       copy a file from/to a console
+* create:     create and start a new console
+* exit:       exit the REPL
+* help:    Shows a list of commands or help for one command
+* list:       list consoles
+* mount:      mount /app filesystem from a container
+* restart:    restart a console
+* start:      start a console
+* stop:       stop a console
+* unmount:    unmount /app filesystem from a container
      
 
     
