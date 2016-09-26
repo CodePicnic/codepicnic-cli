@@ -12,7 +12,7 @@ Run this from your terminal
 
 ## Configuration (set credentials)
 
-Get your credentials (Client ID / Client Secret) from CodeGround.xyz https://codeground.xyz/dashboard/profile
+Get your credentials (Client ID / Client Secret) [from CodeGround.xyz](https://codeground.xyz/dashboard/profile)
 
 ### REPL Mode
 
