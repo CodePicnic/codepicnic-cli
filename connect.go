@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/types"
@@ -8,7 +9,10 @@ import (
 	"github.com/docker/docker/pkg/promise"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/docker/pkg/term"
+	"net/http"
+	//"github.com/docker/go-connections/tlsconfig"
 	"golang.org/x/net/context"
+
 	"io"
 	//"log"
 	"os"
@@ -76,8 +80,12 @@ func holdHijackedConnection(tty bool, inputStream io.ReadCloser, outputStream, e
 //func ProxyConsole(access_token string, container_name string) error {
 func ProxyConsole(access_token string, container_name string) {
 
-	defaultHeaders := map[string]string{"User-Agent": "Docker-Client/1.10.3 (linux)"}
-	cli, err := client.NewClient(swarm_host, "v1.22", nil, defaultHeaders)
+	defaultHeaders := map[string]string{"User-Agent": "Docker-Client/1.10.3 (codepicnic)"}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	cl := &http.Client{Transport: tr}
+	cli, err := client.NewClient(swarm_host, "v1.22", cl, defaultHeaders)
 	if err != nil {
 		fmt.Println("e1", err)
 		panic(err)
