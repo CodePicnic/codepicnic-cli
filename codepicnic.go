@@ -470,6 +470,40 @@ func main() {
 			},
 		},
 		{
+			Name:  "control",
+			Usage: "connect to a console and mount it as a local filesystem",
+			Action: func(c *cli.Context) error {
+				var mountbase string
+				var input_unmount string
+				var console_id string
+				if c.NArg() == 0 {
+					console_id = GetFromPrompt("Console Id", "")
+				} else if c.NArg() == 1 {
+					console_id = c.Args().Get(0)
+				} else {
+					//print error
+				}
+				mountstat := GetMountsFromFile(console_id)
+				if mountstat == "" {
+					BgMountConsole(console_id, mountbase)
+				} else {
+					fmt.Printf(color("Container %s is already mounted in %s. \n", "response"), console_id, mountstat)
+					reader_unmount := bufio.NewReader(os.Stdin)
+					fmt.Printf(color("Do you want to unmount and then mount to a different directory? [ yes ]: ", "prompt"))
+					input, _ := reader_unmount.ReadString('\n')
+					input_unmount = TrimColor(input)
+					if input_unmount == "yes" || input_unmount == "" {
+						mountbase = GetMountFromPrompt()
+						CmdUnmountConsole(console_id)
+						BgMountConsole(console_id, mountbase)
+					}
+				}
+				CmdConnectConsole(console_id)
+				return nil
+			},
+		},
+
+		{
 			Name:  "copy",
 			Usage: "copy a file from/to a console",
 			Action: func(c *cli.Context) error {

@@ -155,10 +155,36 @@ func Repl(c *cli.Context) {
 					console_id = GetConsoleFromPrompt()
 				} else if len(inputArgs) == 2 {
 					console_id = inputArgs[1]
-					//Error print help
 				} else {
 					cli.ShowCommandHelp(c, command)
 					break
+				}
+				CmdConnectConsole(console_id)
+			case "control":
+				var mountbase string
+				var input_unmount string
+				if len(inputArgs) < 2 {
+					console_id = GetConsoleFromPrompt()
+				} else if len(inputArgs) == 2 {
+					console_id = inputArgs[1]
+				} else {
+					cli.ShowCommandHelp(c, command)
+					break
+				}
+				mountstat := GetMountsFromFile(console_id)
+				if mountstat == "" {
+					BgMountConsole(console_id, mountbase)
+				} else {
+					fmt.Printf(color("Container %s is already mounted in %s. \n", "response"), console_id, mountstat)
+					reader_unmount := bufio.NewReader(os.Stdin)
+					fmt.Printf(color("Do you want to unmount and then mount to a different directory? [ yes ]: ", "prompt"))
+					input, _ := reader_unmount.ReadString('\n')
+					input_unmount = TrimColor(input)
+					if input_unmount == "yes" || input_unmount == "" {
+						mountbase = GetMountFromPrompt()
+						CmdUnmountConsole(console_id)
+						BgMountConsole(console_id, mountbase)
+					}
 				}
 				CmdConnectConsole(console_id)
 			case "list":
