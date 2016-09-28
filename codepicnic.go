@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/codegangsta/cli"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/docker/pkg/system"
-	"github.com/docker/engine-api/client"
-	"github.com/docker/engine-api/types"
 	"github.com/go-ini/ini"
 	"golang.org/x/net/context"
 	"io"
@@ -18,9 +18,11 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/signal"
 	"os/user"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"text/template"
 )
@@ -223,7 +225,7 @@ func ProxyConsole(access_token string, container_name string) string {
 }*/
 func ConnectConsole(access_token string, container_name string) {
 
-	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
+	defaultHeaders := map[string]string{"User-Agent": "Docker-Client/1.10.3 (linux)"}
 	cli, err := client.NewClient(swarm_host, "v1.22", nil, defaultHeaders)
 	if err != nil {
 		fmt.Println("e1", err)
@@ -237,7 +239,7 @@ func ConnectConsole(access_token string, container_name string) {
 	}
 	//fmt.Println(r.ID)
 
-	aResp, err := cli.ContainerExecAttach(context.Background(), r.ID, types.ExecConfig{Tty: true, Detach: false})
+	aResp, err := cli.ContainerExecAttach(context.Background(), r.ID, types.ExecConfig{Tty: true, Cmd: []string{"bash"}, Env: nil, AttachStdin: true, AttachStderr: true, AttachStdout: true, Detach: false})
 
 	if err != nil {
 		fmt.Println("e3", err)
@@ -251,6 +253,7 @@ func ConnectConsole(access_token string, container_name string) {
 	receiveStdout := make(chan error, 1)
 	if os.Stdout != nil || os.Stderr != nil {
 		go func() {
+			fmt.Printf("Reader: %s", aResp.Reader)
 			// When TTY is ON, use regular copy
 			if tty && os.Stdout != nil {
 				_, err = io.Copy(os.Stdout, aResp.Reader)
@@ -419,6 +422,15 @@ func main() {
 
 	app.Action = func(c *cli.Context) error {
 		//Start the REPL if not argument given
+
+		cs := make(chan os.Signal, 2)
+		signal.Notify(cs, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-cs
+			fmt.Println(color("Bye!", "exit"))
+			os.Exit(0)
+		}()
+
 		Repl(c)
 		return nil
 	}

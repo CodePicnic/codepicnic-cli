@@ -141,9 +141,10 @@ func CmdConnectConsole(console string) error {
 		access_token, _ = CmdGetTokenAccess()
 	}
 	if valid, _ := isValidConsole(access_token, console); valid {
-		StartConsole(access_token, console)
 		fmt.Printf(color("Connecting to  %s ... ", "response"), console)
-		ConnectConsole(access_token, console)
+		StartConsole(access_token, console)
+		ProxyConsole(access_token, console)
+		//ConnectConsole(access_token, console)
 	} else {
 		fmt.Printf(color("This is not a valid console. Please try again \n", "response"))
 	}

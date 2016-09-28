@@ -104,6 +104,17 @@ func GetFromPrompt(ask string, def string) string {
 	return strings.TrimRight(input, "\r\n")
 }
 
+func NewRepl(c *cli.Context) {
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "." {
+			break
+		}
+		//fmt.Println("hola ", line, "\n") // or do something else with line
+		CmdConnectConsole("1e631b5132a75dc59bf132ad08a0faf6")
+	}
+}
 func Repl(c *cli.Context) {
 	var console_id string
 	var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string
@@ -121,9 +132,9 @@ func Repl(c *cli.Context) {
 		fmt.Println(color("It looks like you didn't authorize your credentials.", "error"))
 		CmdConfigure()
 	}
-	in := bufio.NewReader(os.Stdin)
 	input := ""
 	for input != "." {
+		in := bufio.NewReader(os.Stdin)
 		fmt.Print(color(str_prompt, "prompt"))
 		input, err := in.ReadString('\n')
 		input = TrimColor(input)
