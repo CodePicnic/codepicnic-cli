@@ -285,3 +285,24 @@ func CmdCreateConsole() error {
 	fmt.Printf(color("%s \n", "response"), console_url)
 	return nil
 }
+
+func CmdValidateCredentials() error {
+	token, err := GetTokenAccess()
+	if err != nil {
+		if strings.Contains(err.Error(), "Disconnected") {
+			fmt.Println(color("Can't connect to the CodePicnic API. Please verify your connection or try again.", "error"))
+		} else if strings.Contains(err.Error(), "Not Authorized") {
+			fmt.Println(color("It looks like you didn't authorize your credentials.", "error"))
+			CmdConfigure()
+		} else if strings.Contains(err.Error(), ERROR_EMPTY_CREDENTIALS) {
+			fmt.Println(color("It looks like you didn't authorize your credentials.", "error"))
+			CmdConfigure()
+		} else {
+			fmt.Println(color(err.Error(), "error"))
+		}
+	} else if token == "" {
+		fmt.Println(color("It looks like you didn't authorize your credentials.", "error"))
+		CmdConfigure()
+	}
+	return nil
+}

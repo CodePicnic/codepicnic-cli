@@ -120,18 +120,7 @@ func Repl(c *cli.Context) {
 	var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string
 
 	debug = false
-	access_token, err := GetTokenAccess()
-	if err != nil {
-		if strings.Contains(err.Error(), "Disconnected") {
-			fmt.Println(color("Can't connect to the CodePicnic API. Please verify your connection or try again.", "error"))
-		} else if strings.Contains(err.Error(), "Not Authorized") {
-			fmt.Println(color("It looks like you didn't authorize your credentials.", "error"))
-			CmdConfigure()
-		}
-	} else if access_token == "" {
-		fmt.Println(color("It looks like you didn't authorize your credentials.", "error"))
-		CmdConfigure()
-	}
+	CmdValidateCredentials()
 	input := ""
 	for input != "." {
 		in := bufio.NewReader(os.Stdin)

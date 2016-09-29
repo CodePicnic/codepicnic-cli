@@ -457,6 +457,7 @@ func main() {
 			Name:  "connect",
 			Usage: "connect to a console",
 			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
 				var console string
 				if c.NArg() == 0 {
 					console = GetFromPrompt("Console Id", "")
@@ -473,6 +474,7 @@ func main() {
 			Name:  "control",
 			Usage: "connect to a console and mount it as a local filesystem",
 			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
 				var mountbase string
 				var input_unmount string
 				var console_id string
@@ -507,6 +509,7 @@ func main() {
 			Name:  "copy",
 			Usage: "copy a file from/to a console",
 			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
 				var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string
 				if c.NArg() == 0 {
 					fmt.Printf(color("Copy a file from/to a console. Don't forget to include ':' after the Id of your console.\n", "response"))
@@ -571,43 +574,38 @@ func main() {
 			},
 
 			Action: func(c *cli.Context) error {
-				access_token, err := GetTokenAccess()
-				if err != nil {
-					return nil
-				}
-				if access_token == "" {
-					fmt.Printf("It looks like you didn't authorize your credentials. \n")
-					CmdConfigure()
-					return nil
-				}
-				var console ConsoleExtra
+				CmdValidateCredentials()
+				CmdCreateConsole()
+				/*
+					var console ConsoleExtra
 
-				if c.NumFlags() == 0 {
+					if c.NumFlags() == 0 {
 
-					reader_type := bufio.NewReader(os.Stdin)
-					fmt.Print("Type?(bash,ruby,python ... )[bash]: ")
-					input, _ := reader_type.ReadString('\n')
-					container_type = strings.TrimRight(input, "\r\n")
-					reader_title := bufio.NewReader(os.Stdin)
-					fmt.Print("Title?[]: ")
-					input, _ = reader_title.ReadString('\n')
-					title = strings.TrimRight(input, "\r\n")
-					if container_type == "" {
-						fmt.Println("type")
-						container_type = "bash"
+						reader_type := bufio.NewReader(os.Stdin)
+						fmt.Print("Type?(bash,ruby,python ... )[bash]: ")
+						input, _ := reader_type.ReadString('\n')
+						container_type = strings.TrimRight(input, "\r\n")
+						reader_title := bufio.NewReader(os.Stdin)
+						fmt.Print("Title?[]: ")
+						input, _ = reader_title.ReadString('\n')
+						title = strings.TrimRight(input, "\r\n")
+						if container_type == "" {
+							fmt.Println("type")
+							container_type = "bash"
+						}
+
 					}
+					console.Size = container_size
+					console.Type = container_type
+					console.Title = title
+					console.Hostname = hostname
+					console.Mode = current_mode
 
-				}
-				console.Size = container_size
-				console.Type = container_type
-				console.Title = title
-				console.Hostname = hostname
-				console.Mode = current_mode
-
-				fmt.Printf("Creating console ...")
-				container_name, console_url := CreateConsole(access_token, console)
-				fmt.Printf("done. * %s \n", container_name)
-				fmt.Printf("%s \n", console_url)
+					fmt.Printf("Creating console ...")
+					container_name, console_url := CreateConsole(access_token, console)
+					fmt.Printf("done. * %s \n", container_name)
+					fmt.Printf("%s \n", console_url)
+				*/
 				return nil
 			},
 		},
@@ -616,6 +614,7 @@ func main() {
 			Usage:     "exec a command into console",
 			ArgsUsage: "[console_id] \"[command]\"",
 			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
 				var console, command string
 				if c.NArg() == 0 {
 					console = GetFromPrompt("Console Id", "")
@@ -654,6 +653,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
 				CmdListConsoles()
 				return nil
 			},
@@ -669,6 +669,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
 				CmdMountConsole(c.Args())
 				return nil
 			},
@@ -677,6 +678,7 @@ func main() {
 			Name:  "restart",
 			Usage: "restart a console",
 			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
 				CmdRestartConsole(c.Args()[0])
 				return nil
 			},
@@ -685,6 +687,7 @@ func main() {
 			Name:  "start",
 			Usage: "start a console",
 			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
 				CmdStartConsole(c.Args()[0])
 				return nil
 			},
@@ -693,6 +696,7 @@ func main() {
 			Name:  "stop",
 			Usage: "stop a console",
 			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
 				CmdStopConsole(c.Args()[0])
 				return nil
 			},
