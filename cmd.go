@@ -3,8 +3,8 @@ package main
 import (
 	"bufio"
 	"fmt"
-	//"github.com/ctcpip/notifize"
-	"github.com/0xAX/notificator"
+	"github.com/ctcpip/notifize"
+	//"github.com/0xAX/notificator"
 	"github.com/kardianos/osext"
 	"github.com/ryanuber/columnize"
 	"os"
@@ -251,13 +251,13 @@ func BgMountConsole(console_id string, mountbase string) {
 			mountpoint = pwd + "/" + mountbase + "/" + console_id
 		}
 		fmt.Printf(color("Done * Mounted on %s \n", "response"), mountpoint)
-		//notifize.Display("title", "hello, world", false, "")
-		var notify *notificator.Notificator
+		notifize.Display("CodePicnic", "Console succesfully mounted", false, "")
+		/*var notify *notificator.Notificator
 		notify = notificator.New(notificator.Options{
 			DefaultIcon: "icon/default.png",
 			AppName:     "CodePicnic",
 		})
-		notify.Push("CodePicnic", "Console succesfully mounted", "", notificator.UR_CRITICAL)
+		notify.Push("CodePicnic", "Console succesfully mounted", "", notificator.UR_CRITICAL)*/
 
 	}
 }
