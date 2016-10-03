@@ -251,7 +251,20 @@ func BgMountConsole(console_id string, mountbase string) {
 			mountpoint = pwd + "/" + mountbase + "/" + console_id
 		}
 		fmt.Printf(color("Done * Mounted on %s \n", "response"), mountpoint)
-		notifize.Display("CodePicnic", "Console succesfully mounted", false, getHomeDir()+"/"+cfg_dir+"/"+notify_file)
+		switch runtime.GOOS {
+		case "darwin":
+			note := gosxnotifier.NewNotification("Console succesfully mounted")
+			note.Title = "CodePicnic"
+			err := note.Push()
+
+			//If necessary, check error
+			if err != nil {
+				log.Println("Uh oh!")
+			}
+
+		case "linux":
+			notifize.Display("CodePicnic", "Console succesfully mounted", false, getHomeDir()+"/"+cfg_dir+"/"+notify_file)
+		}
 		/*var notify *notificator.Notificator
 		notify = notificator.New(notificator.Options{
 			DefaultIcon: "icon/default.png",
