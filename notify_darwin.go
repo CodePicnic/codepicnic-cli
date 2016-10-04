@@ -8,9 +8,9 @@ import (
 func NotifyDesktop() {
 	note := gosxnotifier.NewNotification("Console succesfully mounted")
 	note.Title = "CodePicnic"
-	//note.AppIcon = getHomeDir() + "/" + cfg_dir + "/" + notify_file
+	note.AppIcon = getHomeDir() + "/" + cfg_dir + "/" + notify_file
 	//note.ContentImage = getHomeDir() + "/" + cfg_dir + "/" + notify_file
-	note.Sender = "com.apple.Safari"
+	//note.Sender = "com.apple.Safari"
 
 	note.Push()
 
