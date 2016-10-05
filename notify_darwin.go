@@ -2,7 +2,8 @@
 package main
 
 import (
-	"github.com/deckarep/gosx-notifier"
+	//"github.com/deckarep/gosx-notifier"
+	"github.com/twstrike/gosx-notifier"
 )
 
 func NotifyDesktop() {
