@@ -413,7 +413,7 @@
 												<key>GID</key>
 												<integer>0</integer>
 												<key>PATH</key>
-                                                <string>/Users/jenkins/jenkins_slave/workspace/codepicnic-cli/codepicnic</string>
+												<string>/Users/jenkins/jenkins_slave/workspace/codepicnic-cli/codepicnic</string>
 												<key>PATH_TYPE</key>
 												<integer>0</integer>
 												<key>PERMISSIONS</key>
@@ -489,12 +489,28 @@
 			<key>POSTINSTALL_PATH</key>
 			<dict>
 				<key>PATH</key>
-                <string>/Users/jenkins/jenkins_slave/workspace/codepicnic-cli/codepicnic-post.sh</string>
+				<string>codepicnic-post.sh</string>
 				<key>PATH_TYPE</key>
-				<integer>0</integer>
+				<integer>1</integer>
 			</dict>
 			<key>RESOURCES</key>
 			<array>
+				<dict>
+					<key>CHILDREN</key>
+					<array/>
+					<key>GID</key>
+					<integer>0</integer>
+					<key>PATH</key>
+					<string>codepicnic.png</string>
+					<key>PATH_TYPE</key>
+					<integer>1</integer>
+					<key>PERMISSIONS</key>
+					<integer>420</integer>
+					<key>TYPE</key>
+					<integer>3</integer>
+					<key>UID</key>
+					<integer>0</integer>
+				</dict>
 				<dict>
 					<key>CHILDREN</key>
 					<array/>
