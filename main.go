@@ -32,6 +32,7 @@ import (
 const FragSeparator = ':'
 const cfg_dir = ".codepicnic"
 const cfg_file = "config"
+const app_dir = "/usr/local/CodePicnic"
 const notify_file = "codepicnic.png"
 
 var version string
