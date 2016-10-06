@@ -6,5 +6,5 @@ import (
 
 func NotifyDesktop() {
 
-	notifize.Display("CodePicnic", "Console succesfully mounted", false, getHomeDir()+"/"+cfg_dir+"/"+notify_file)
+	notifize.Display("CodePicnic", "Console succesfully mounted", false, share_dir_linux+"/"+notify_file)
 }
