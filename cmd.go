@@ -241,7 +241,7 @@ func BgMountConsole(console_id string, mountbase string) {
 	cp_bin, _ := osext.Executable()
 	var mountpoint string
 	fmt.Printf(color("Mounting /app directory from %s ... ", "response"), console_id)
-	cmd := exec.Command("nohup", cp_bin, "mount", console_id, mountbase)
+	cmd := exec.Command("nohup", cp_bin, "bgmount", console_id, mountbase)
 	err := cmd.Start()
 	if err != nil {
 		fmt.Printf("Error %v", err)

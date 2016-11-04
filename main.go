@@ -721,6 +721,23 @@ func main() {
 			},
 		},
 		{
+			Name:   "bgmount",
+			Usage:  "mount /app filesystem from a container",
+			Hidden: true,
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:        "debug",
+					Usage:       "Debugging",
+					Destination: &debug,
+				},
+			},
+			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
+				CmdMountConsole(c.Args())
+				return nil
+			},
+		},
+		{
 			Name:  "restart",
 			Usage: "restart a console",
 			Action: func(c *cli.Context) error {
