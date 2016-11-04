@@ -256,7 +256,10 @@ func Repl(c *cli.Context) {
 				}
 				CmdRestartConsole(console_id)
 			case "create":
-				CmdCreateConsole()
+				var console ConsoleExtra
+				console = ConsoleExtra{}
+
+				CmdCreateConsole(console)
 			case "help":
 				cli.ShowAppHelp(c)
 			case "exit":

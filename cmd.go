@@ -55,16 +55,20 @@ func CmdListConsoles() error {
 		}
 		for i := range consoles {
 			var mounted string
-			mountpoint := GetMountsFromFile(consoles[i].ContainerName)
-			if mountpoint == "" {
-				mounted = "NO"
+			var mountpoint string
+			if consoles[i].ContainerName == "" {
 			} else {
-				mounted = "YES"
+				mountpoint = GetMountsFromFile(consoles[i].ContainerName)
+				if mountpoint == "" {
+					mounted = "NO"
+				} else {
+					mounted = "YES"
+				}
+				layout := "2006-01-02T15:04:05.000Z"
+				t, _ := time.Parse(layout, consoles[i].CreatedAt)
+				console_cols := consoles[i].ContainerName + "|" + consoles[i].Title + "|" + consoles[i].ContainerType + "|" + t.Format("2006-01-02 15:04:05") + "|" + mounted + "|" + site + "/consoles/" + consoles[i].Permalink
+				output = append(output, console_cols)
 			}
-			layout := "2006-01-02T15:04:05.000Z"
-			t, _ := time.Parse(layout, consoles[i].CreatedAt)
-			console_cols := consoles[i].ContainerName + "|" + consoles[i].Title + "|" + consoles[i].ContainerType + "|" + t.Format("2006-01-02 15:04:05") + "|" + mounted + "|" + site + "/consoles/" + consoles[i].Permalink
-			output = append(output, console_cols)
 		}
 		result := columnize.SimpleFormat(output)
 		istitle := true
@@ -253,38 +257,66 @@ func BgMountConsole(console_id string, mountbase string) {
 
 	}
 }
+
+/*
 func CmdCreateConsole() error {
 	access_token := GetTokenAccessFromFile()
 	if len(access_token) != TOKEN_LEN {
 		access_token, _ = CmdGetTokenAccess()
 	}
 	var console ConsoleExtra
-	container_type := "bash"
-	title := ""
-	reader_type := bufio.NewReader(os.Stdin)
-	fmt.Print(color("Type (bash, ruby, python, ... ) [ bash ]: ", "prompt"))
-	input, _ := reader_type.ReadString('\n')
-	container_type = strings.TrimRight(input, "\r\n")
-	//reader_size := bufio.NewReader(os.Stdin)
-	//fmt.Print("Size?(medium,large,xlarge,xxlarge)[medium]: ")
-	//input, _ = reader_size.ReadString('\n')
-	//container_size = strings.TrimRight(input, "\r\n")
-	reader_title := bufio.NewReader(os.Stdin)
-	fmt.Print(color("Title [ ]: ", "prompt"))
-	input, _ = reader_title.ReadString('\n')
-	title = strings.TrimRight(input, "\r\n")
-	if container_type == "" {
-		fmt.Println("type")
-		container_type = "bash"
-	}
-	console.Size = "medium"
-	console.Mode = "draft"
-	console.Type = container_type
-	console.Title = title
 	fmt.Printf(color("Creating console ...", "response"))
 	container_name, console_url := CreateConsole(access_token, console)
 	fmt.Printf(color(" Done. * %s \n", "response"), container_name)
 	fmt.Printf(color("%s \n", "response"), console_url)
+	return nil
+}*/
+
+func CmdCreateConsole(console ConsoleExtra) error {
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
+	}
+
+	if (ConsoleExtra{}) == console {
+		container_type := "bash"
+		title := ""
+		reader_type := bufio.NewReader(os.Stdin)
+		fmt.Print(color("Type (bash, ruby, python, ... ) [ bash ]: ", "prompt"))
+		input, _ := reader_type.ReadString('\n')
+		container_type = strings.TrimRight(input, "\r\n")
+		reader_title := bufio.NewReader(os.Stdin)
+		fmt.Print(color("Title [ ]: ", "prompt"))
+		input, _ = reader_title.ReadString('\n')
+		title = strings.TrimRight(input, "\r\n")
+		if container_type == "" {
+			container_type = "bash"
+		}
+		console.Size = "medium"
+		console.Mode = "draft"
+		console.Type = container_type
+		console.Title = title
+
+	} else {
+		if console.Type == "" {
+			console.Type = "bash"
+		}
+		if console.Size == "" {
+			console.Type = "medium"
+		}
+		if console.Mode == "" {
+			console.Type = "draft"
+		}
+	}
+	fmt.Printf(color("Creating console ...", "response"))
+	container_name, console_url := CreateConsole(access_token, console)
+	if container_name == "" {
+		fmt.Printf(color(" Error.\n", "error"))
+		fmt.Printf(color("There was an error creating the console. Please verify if you choose the right type.\n", "error"))
+	} else {
+		fmt.Printf(color(" Done. * %s \n", "response"), container_name)
+		fmt.Printf(color("%s \n", "response"), console_url)
+	}
 	return nil
 }
 

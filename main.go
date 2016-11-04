@@ -578,7 +578,19 @@ func main() {
 
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
-				CmdCreateConsole()
+
+				var console ConsoleExtra
+				if c.NumFlags() == 0 {
+					console = ConsoleExtra{}
+					CmdCreateConsole(console)
+				} else {
+					console.Size = container_size
+					console.Type = container_type
+					console.Title = title
+					console.Hostname = hostname
+					console.Mode = current_mode
+					CmdCreateConsole(console)
+				}
 				/*
 					var console ConsoleExtra
 
@@ -673,7 +685,38 @@ func main() {
 			},
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
-				CmdMountConsole(c.Args())
+
+				var mountbase string
+				var input_unmount string
+				var console_id string
+				if c.NArg() == 0 {
+					console_id = GetConsoleFromPrompt()
+					mountbase = GetMountFromPrompt()
+				} else if c.NArg() == 1 {
+					console_id = c.Args().Get(0)
+					mountbase = GetMountFromPrompt()
+				} else if c.NArg() == 2 {
+					console_id = c.Args().Get(0)
+					mountbase = c.Args().Get(1)
+				}
+				//check if console is already mounted
+				mountstat := GetMountsFromFile(console_id)
+				if mountstat == "" {
+					BgMountConsole(console_id, mountbase)
+				} else {
+					fmt.Printf(color("Container %s is already mounted in %s. \n", "response"), console_id, mountstat)
+					reader_unmount := bufio.NewReader(os.Stdin)
+					fmt.Printf(color("Do you want to unmount and then mount to a different directory? [ yes ]: ", "prompt"))
+					input, _ := reader_unmount.ReadString('\n')
+					input_unmount = TrimColor(input)
+					if input_unmount == "yes" || input_unmount == "" {
+						mountbase = GetMountFromPrompt()
+						CmdUnmountConsole(console_id)
+						BgMountConsole(console_id, mountbase)
+					}
+				}
+
+				//CmdMountConsole(c.Args())
 				return nil
 			},
 		},
