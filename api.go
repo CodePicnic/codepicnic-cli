@@ -58,6 +58,18 @@ type ConsoleJson struct {
 type ConsoleCollection struct {
 	Consoles []ConsoleJson `json:"consoles"`
 }
+type StackCollection struct {
+	Stacks []StackJson `json:"container_types"`
+}
+
+type StackJson struct {
+	Identifier string `json:"identifier"`
+	Name       string `json:"name"`
+	ShortName  string `json:"short_name"`
+	Version    string `json:"version"`
+	ImageName  string `json:"image_name"`
+	Group      string `json:"group"`
+}
 
 func GetTokenAccess() (string, error) {
 	client_id, client_secret := GetCredentialsFromFile()
@@ -276,4 +288,30 @@ func RemoveConsole(access_token string, console string) error {
 	}
 	defer resp.Body.Close()
 	return nil
+}
+func ListStacks(access_token string) ([]StackJson, error) {
+
+	cp_types_url := site + "/api/container_types.json"
+	req, err := http.NewRequest("GET", cp_types_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 401 {
+		return nil, errors.New(ERROR_INVALID_TOKEN)
+	}
+	var stack_collection StackCollection
+	body, err := ioutil.ReadAll(resp.Body)
+	err = json.Unmarshal(body, &stack_collection)
+	if err != nil {
+		fmt.Printf("%+v\n", err)
+	}
+	//_ = json.NewDecoder(resp.Body).Decode(&console_collection)
+	//fmt.Printf("%+v\n", string(body))
+	//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
+	return stack_collection.Stacks, nil
 }

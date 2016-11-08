@@ -704,11 +704,37 @@ func main() {
 			},
 		},
 		{
+			Name:  "remove",
+			Usage: "remove a console",
+			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
+				CmdRemoveConsole(c.Args()[0])
+				return nil
+			},
+		},
+		{
 			Name:  "restart",
 			Usage: "restart a console",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				CmdRestartConsole(c.Args()[0])
+				return nil
+			},
+		},
+		{
+			Name:  "stacks",
+			Usage: "list stacks",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:        "format",
+					Value:       "text",
+					Usage:       "Output format: text, json",
+					Destination: &format,
+				},
+			},
+			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
+				CmdListStacks()
 				return nil
 			},
 		},
@@ -727,15 +753,6 @@ func main() {
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				CmdStopConsole(c.Args()[0])
-				return nil
-			},
-		},
-		{
-			Name:  "remove",
-			Usage: "remove a console",
-			Action: func(c *cli.Context) error {
-				CmdValidateCredentials()
-				CmdRemoveConsole(c.Args()[0])
 				return nil
 			},
 		},

@@ -185,6 +185,15 @@ func Repl(c *cli.Context) {
 					}
 				}
 				CmdListConsoles()
+			case "stacks":
+				if len(inputArgs) > 1 {
+					if inputArgs[2] == "json" {
+						format = "json"
+					} else {
+						format = "text"
+					}
+				}
+				CmdListStacks()
 			case "mount":
 				var mountbase string
 				var input_unmount string

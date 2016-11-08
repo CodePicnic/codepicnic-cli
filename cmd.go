@@ -360,3 +360,52 @@ func CmdValidateCredentials() error {
 	}
 	return nil
 }
+func CmdListStacks() error {
+
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
+	}
+	if format == "json" {
+		//consoles := JsonListConsoles(access_token)
+		//fmt.Println(string(consoles))
+
+	} else {
+
+		stacks, err := ListStacks(access_token)
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_INVALID_TOKEN) {
+				access_token, err = CmdGetTokenAccess()
+				stacks, err = ListStacks(access_token)
+			}
+		}
+		output := []string{
+			"IDENTIFIER|NAME|GROUP",
+		}
+		for i := range stacks {
+			if strings.HasPrefix(stacks[i].Identifier, "devpad") {
+			} else {
+				stack_cols := stacks[i].Identifier + "|" + stacks[i].Name + "|" + stacks[i].Group
+				output = append(output, stack_cols)
+			}
+		}
+		result := columnize.SimpleFormat(output)
+		istitle := true
+		scanner := bufio.NewScanner(strings.NewReader(result))
+		for scanner.Scan() {
+			//first line is the title
+			if istitle {
+				fmt.Println(color(scanner.Text(), "table"))
+			} else {
+				line := strings.Replace(scanner.Text(), "NO", color("NO", "off"), 1)
+				fmt.Println(color(line, "data"))
+			}
+			istitle = false
+		}
+
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintln(os.Stderr, "reading standard input:", err)
+		}
+	}
+	return nil
+}
