@@ -175,40 +175,6 @@ func StopConsole(access_token string, container_name string) {
 	return
 }
 
-func StartConsole(access_token string, container_name string) {
-
-	cp_consoles_url := site + "/api/consoles/" + container_name + "/start"
-	req, err := http.NewRequest("POST", cp_consoles_url, nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+access_token)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	var console Console
-	_ = json.NewDecoder(resp.Body).Decode(&console)
-	return
-}
-
-func RestartConsole(access_token string, container_name string) {
-
-	cp_consoles_url := site + "/api/consoles/" + container_name + "/restart"
-	req, err := http.NewRequest("POST", cp_consoles_url, nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+access_token)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	var console Console
-	_ = json.NewDecoder(resp.Body).Decode(&console)
-	return
-}
-
 /*
 func ProxyConsole(access_token string, container_name string) string {
 
@@ -761,6 +727,15 @@ func main() {
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				CmdStopConsole(c.Args()[0])
+				return nil
+			},
+		},
+		{
+			Name:  "remove",
+			Usage: "remove a console",
+			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
+				CmdRemoveConsole(c.Args()[0])
 				return nil
 			},
 		},

@@ -228,3 +228,52 @@ func ExecConsole(token string, console string, command string) ([]JsonCommand, e
 	//fmt.Printf("%+v\n", string(body))
 	return CmdCollection, nil
 }
+
+func StartConsole(access_token string, container_name string) {
+
+	cp_consoles_url := site + "/api/consoles/" + container_name + "/start"
+	req, err := http.NewRequest("POST", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	var console Console
+	_ = json.NewDecoder(resp.Body).Decode(&console)
+	return
+}
+
+func RestartConsole(access_token string, container_name string) {
+
+	cp_consoles_url := site + "/api/consoles/" + container_name + "/restart"
+	req, err := http.NewRequest("POST", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	var console Console
+	_ = json.NewDecoder(resp.Body).Decode(&console)
+	return
+}
+
+func RemoveConsole(access_token string, console string) error {
+	cp_consoles_url := site + "/api/consoles" + "/" + console
+	var jsonStr = []byte("")
+	req, err := http.NewRequest("DELETE", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	//req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	return nil
+}

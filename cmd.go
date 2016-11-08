@@ -165,6 +165,26 @@ func CmdRestartConsole(console string) error {
 	return nil
 }
 
+func CmdRemoveConsole(console string) error {
+	access_token := GetTokenAccessFromFile()
+	if len(access_token) != TOKEN_LEN {
+		access_token, _ = CmdGetTokenAccess()
+	}
+	reader_remove := bufio.NewReader(os.Stdin)
+	input_remove := "yes"
+	fmt.Printf(color("Are you sure you want to remove the console? [yes]: ", "prompt"))
+	input, _ := reader_remove.ReadString('\n')
+	input_remove = strings.TrimRight(input, "\r\n")
+	if input_remove == "yes" {
+		fmt.Printf(color("Removing console %s ... ", "response"), console)
+		RemoveConsole(access_token, console)
+		fmt.Printf(color("Done.\n", "response"))
+	} else {
+		fmt.Printf(color("Removing console %s ... \n", "response"), console)
+	}
+	return nil
+}
+
 func CmdMountConsole(args []string) error {
 
 	access_token := GetTokenAccessFromFile()

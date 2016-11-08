@@ -97,6 +97,8 @@ func ListFiles(access_token string, container_name string, path string) []File {
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		jsonFiles, err := gabs.ParseJSON(body)
+		fmt.Printf("%+v\n", string(body))
+
 		//fmt.Printf("JsonFiles %v \n", jsonFiles)
 		//jsonPaths, _ := jsonFiles.Search("paths").ChildrenMap()
 		//jsonTypes, _ := jsonFiles.Search("types").ChildrenMap()

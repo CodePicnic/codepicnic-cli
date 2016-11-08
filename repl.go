@@ -255,6 +255,15 @@ func Repl(c *cli.Context) {
 					console_id = inputArgs[1]
 				}
 				CmdRestartConsole(console_id)
+			case "remove":
+				if len(inputArgs) < 2 {
+					console_id = GetConsoleFromPrompt()
+				} else if len(inputArgs) > 2 {
+					//Error print help
+				} else {
+					console_id = inputArgs[1]
+				}
+				CmdRemoveConsole(console_id)
 			case "create":
 				var console ConsoleExtra
 				console = ConsoleExtra{}
