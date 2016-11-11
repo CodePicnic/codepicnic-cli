@@ -373,7 +373,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 func (f *File) ReadFile() (string, error) {
 	Debug("ReadFile", f.name, f.path)
-	cp_consoles_url := site + "/api/consoles/" + f.fs.container + "/" + f.path
+	cp_consoles_url := site + "/api/consoles/" + f.fs.container + "/read_file?path=" + f.path
 	Debug("cp_consoles_url", cp_consoles_url)
 
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
