@@ -145,7 +145,10 @@ func UnmountConsole(container_name string) error {
 			}
 			return err
 		} else {
-
+			err = os.Remove(mountpoint)
+			if err != nil {
+				fmt.Println("Error removing dir", err)
+			}
 			fmt.Printf(color("Container %s succesfully unmounted\n", "response"), container_name)
 			SaveMountsToFile(container_name, "")
 		}
@@ -154,21 +157,34 @@ func UnmountConsole(container_name string) error {
 }
 func MountConsole(access_token string, container_name string, mount_dir string) error {
 	var mount_point string
+	var mountlink string
+	var mountlabel string
 	//var wg sync.WaitGroup
-
-	if mount_dir == "" {
-		mount_point = container_name
-		os.Mkdir(container_name, 0755)
+	_, console, _ := isValidConsole(access_token, container_name)
+	if len(console.Title) > 0 {
+		mountlink = console.Permalink
+		mountlabel = console.Title
 	} else {
-		mount_point = mount_dir + "/" + container_name
-		os.Mkdir(mount_dir+"/"+container_name, 0755)
+		mountlink = container_name
+		mountlabel = container_name
+	}
+	if mount_dir == "" {
+		//mount_point = container_name
+		//os.Mkdir(container_name, 0755)
+		mount_point = mountlink
+		os.Mkdir(mountlink, 0755)
+	} else {
+		//mount_point = mount_dir + "/" + container_name
+		//os.Mkdir(mount_dir+"/"+container_name, 0755)
+		mount_point = mount_dir + "/" + mountlink
+		os.Mkdir(mount_dir+"/"+mountlink, 0755)
 	}
 	//Debug("MountPoint", mount_point)
 	mp, err := fuse.Mount(mount_point, fuse.MaxReadahead(32*1024*1024),
 		//fuse.AsyncRead(), fuse.WritebackCache())
-		fuse.AsyncRead())
+		fuse.AsyncRead(), fuse.VolumeName(mountlabel))
 	if err != nil {
-		fmt.Printf("serve err %v", err)
+		fmt.Printf("serve err %v\n", err)
 		return err
 	}
 	defer mp.Close()

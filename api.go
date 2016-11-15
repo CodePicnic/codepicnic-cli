@@ -71,6 +71,17 @@ type StackJson struct {
 	Group      string `json:"group"`
 }
 
+//Another type of console :(
+type ConsoleShowJson struct {
+	Url           string `json:"url"`
+	EmbedUrl      string `json:"embed_url"`
+	ContainerName string `json:"container_name"`
+	TerminalUrl   string `json:"terminal_url"`
+	IsHeadless    string `json:"is_headless"`
+	Title         string `json:"title"`
+	Permalink     string `json:"permalink"`
+}
+
 func GetTokenAccess() (string, error) {
 	client_id, client_secret := GetCredentialsFromFile()
 	if client_id == "" || client_secret == "" {
@@ -173,14 +184,15 @@ func ListConsoles(access_token string) ([]ConsoleJson, error) {
 	return console_collection.Consoles, nil
 }
 
-func isValidConsole(token string, console string) (bool, error) {
+func isValidConsole(token string, console string) (bool, ConsoleJson, error) {
 	consoles, _ := ListConsoles(token)
+	var console_empty ConsoleJson
 	for i := range consoles {
 		if console == consoles[i].ContainerName {
-			return true, nil
+			return true, consoles[i], nil
 		}
 	}
-	return false, nil
+	return false, console_empty, nil
 }
 
 func JsonListConsoles(access_token string) string {

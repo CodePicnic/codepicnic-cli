@@ -144,7 +144,7 @@ func CmdConnectConsole(console string) error {
 	if len(access_token) != TOKEN_LEN {
 		access_token, _ = CmdGetTokenAccess()
 	}
-	if valid, _ := isValidConsole(access_token, console); valid {
+	if valid, _, _ := isValidConsole(access_token, console); valid {
 		fmt.Printf(color("Connecting to  %s ... ", "response"), console)
 		StartConsole(access_token, console)
 		ProxyConsole(access_token, console)
@@ -258,24 +258,39 @@ func CmdExecConsole(console_id string, command string) error {
 }
 
 func BgMountConsole(console_id string, mountbase string) {
+	access_token := GetTokenAccessFromFile()
 	cp_bin, _ := osext.Executable()
 	var mountpoint string
-	fmt.Printf(color("Mounting /app directory from %s ... ", "response"), console_id)
-	cmd := exec.Command("nohup", cp_bin, "bgmount", console_id, mountbase)
-	err := cmd.Start()
-	if err != nil {
-		fmt.Printf("Error %v", err)
-	} else {
+	var mountlink string
+	if valid, console, _ := isValidConsole(access_token, console_id); valid {
+		if len(console.Title) > 0 {
+			mountlink = console.Permalink
+		} else {
+			mountlink = console_id
+		}
 		if strings.HasPrefix(mountbase, "/") {
-			mountpoint = mountbase + "/" + console_id
+			mountpoint = mountbase + "/" + mountlink
 		} else {
 			pwd, _ := os.Getwd()
-			mountpoint = pwd + "/" + mountbase + "/" + console_id
+			mountpoint = pwd + "/" + mountbase + "/" + mountlink
 		}
-		fmt.Printf(color("Done * Mounted on %s \n", "response"), mountpoint)
-		NotifyDesktop()
-
+		if _, err := os.Stat(mountpoint); err == nil {
+			fmt.Printf(color("Mount point %s already exists, please remove it or try to mount in a different directory \n", "response"), mountpoint)
+		} else {
+			fmt.Printf(color("Mounting /app directory from %s ... ", "response"), console_id)
+			cmd := exec.Command("nohup", cp_bin, "bgmount", console_id, mountbase)
+			err := cmd.Start()
+			if err != nil {
+				fmt.Printf("Error %v", err)
+			} else {
+				fmt.Printf(color("Done * Mounted on %s \n", "response"), mountpoint)
+				NotifyDesktop()
+			}
+		}
+	} else {
+		fmt.Printf(color("This is not a valid console. Please try again \n", "response"))
 	}
+
 }
 
 /*
