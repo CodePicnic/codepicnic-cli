@@ -163,10 +163,10 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	_, console, _ := isValidConsole(access_token, container_name)
 	if len(console.Title) > 0 {
 		mountlink = console.Permalink
-		mountlabel = console.Title + "\n(CodePicnic)"
+		mountlabel = console.Title + " (CodePicnic)"
 	} else {
 		mountlink = container_name
-		mountlabel = container_name + "\n(CodePicnic)"
+		mountlabel = container_name + " (CodePicnic)"
 	}
 	if mount_dir == "" {
 		//mount_point = container_name
