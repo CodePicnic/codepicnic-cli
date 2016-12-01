@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"github.com/codegangsta/cli"
 	"github.com/docker/docker/api/types"
@@ -135,44 +134,6 @@ func getHomeDir() string {
 	}
 	return user_data.HomeDir
 
-}
-
-func CreateConsole(access_token string, console_extra ConsoleExtra) (string, string) {
-
-	cp_consoles_url := site + "/api/consoles"
-
-	//cp_payload := `{ "console:    { "grant_type": "client_credentials","client_id": "` + client_id + `", "client_secret": "` + client_secret + `"}`
-	cp_payload := ` { "console": { "container_size": "` + console_extra.Size + `", "container_type": "` + console_extra.Type + `", "title": "` + console_extra.Title + `" , "hostname": "` + console_extra.Hostname + `", "current_mode": "` + console_extra.Mode + `" }  }`
-	var jsonStr = []byte(cp_payload)
-	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
-	//req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+access_token)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	var console Console
-	_ = json.NewDecoder(resp.Body).Decode(&console)
-	return console.ContainerName, console.Url
-}
-
-func StopConsole(access_token string, container_name string) {
-
-	cp_consoles_url := site + "/api/consoles/" + container_name + "/stop"
-	req, err := http.NewRequest("POST", cp_consoles_url, nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+access_token)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	var console Console
-	_ = json.NewDecoder(resp.Body).Decode(&console)
-	return
 }
 
 /*

@@ -48,6 +48,9 @@ func CmdListConsoles() error {
 			if strings.Contains(err.Error(), ERROR_INVALID_TOKEN) {
 				access_token, err = CmdGetTokenAccess()
 				consoles, err = ListConsoles(access_token)
+			} else if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
+				fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
+				return nil
 			}
 		}
 		output := []string{
@@ -97,7 +100,14 @@ func CmdStopConsole(console string) error {
 		access_token, _ = CmdGetTokenAccess()
 	}
 	fmt.Printf(color("Stopping console %s ... ", "response"), console)
-	StopConsole(access_token, console)
+	err := StopConsole(access_token, console)
+	if err != nil {
+		if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
+			fmt.Printf(color("Error.\n", "error"))
+			fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
+			return nil
+		}
+	}
 	fmt.Printf(color("Done.\n", "response"))
 	return nil
 }
@@ -135,7 +145,14 @@ func CmdStartConsole(console string) error {
 		access_token, _ = CmdGetTokenAccess()
 	}
 	fmt.Printf(color("Starting console %s ... ", "response"), console)
-	StartConsole(access_token, console)
+	err := StartConsole(access_token, console)
+	if err != nil {
+		if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
+			fmt.Printf(color("Error.\n", "error"))
+			fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
+			return nil
+		}
+	}
 	fmt.Printf(color("Done.\n", "response"))
 	return nil
 }
@@ -144,12 +161,18 @@ func CmdConnectConsole(console string) error {
 	if len(access_token) != TOKEN_LEN {
 		access_token, _ = CmdGetTokenAccess()
 	}
-	if valid, _, _ := isValidConsole(access_token, console); valid {
+	if valid, _, err := isValidConsole(access_token, console); valid {
 		fmt.Printf(color("Connecting to  %s ... ", "response"), console)
 		StartConsole(access_token, console)
 		ProxyConsole(access_token, console)
 		//ConnectConsole(access_token, console)
 	} else {
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
+				fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
+				return nil
+			}
+		}
 		fmt.Printf(color("This is not a valid console. Please try again \n", "response"))
 	}
 	return nil
@@ -160,7 +183,14 @@ func CmdRestartConsole(console string) error {
 		access_token, _ = CmdGetTokenAccess()
 	}
 	fmt.Printf(color("Restarting console %s ... ", "response"), console)
-	RestartConsole(access_token, console)
+	err := RestartConsole(access_token, console)
+	if err != nil {
+		if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
+			fmt.Printf(color("Error.\n", "error"))
+			fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
+			return nil
+		}
+	}
 	fmt.Printf(color("Done.\n", "response"))
 	return nil
 }
@@ -177,7 +207,14 @@ func CmdRemoveConsole(console string) error {
 	input_remove = strings.TrimRight(input, "\r\n")
 	if input_remove == "yes" {
 		fmt.Printf(color("Removing console %s ... ", "response"), console)
-		RemoveConsole(access_token, console)
+		err := RemoveConsole(access_token, console)
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
+				fmt.Printf(color("Error.\n", "error"))
+				fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
+				return nil
+			}
+		}
 		fmt.Printf(color("Done.\n", "response"))
 	} else {
 		fmt.Printf(color("Removing console %s ... \n", "response"), console)
@@ -191,7 +228,13 @@ func CmdMountConsole(args []string) error {
 	if len(access_token) != TOKEN_LEN {
 		access_token, _ = CmdGetTokenAccess()
 	}
-	StartConsole(access_token, args[0])
+	err := StartConsole(access_token, args[0])
+	if err != nil {
+		if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
+			fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
+			return nil
+		}
+	}
 	mountpoint := GetMountsFromFile(args[0])
 	if mountpoint == "" {
 		var mount_point string
@@ -250,7 +293,13 @@ func CmdExecConsole(console_id string, command string) error {
 	if len(access_token) != TOKEN_LEN {
 		access_token, _ = CmdGetTokenAccess()
 	}
-	results, _ := ExecConsole(access_token, console_id, command)
+	results, err := ExecConsole(access_token, console_id, command)
+	if err != nil {
+		if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
+			fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
+			return nil
+		}
+	}
 	for i := range results {
 		fmt.Printf(color(results[i].result, "response"))
 	}
@@ -262,7 +311,7 @@ func BgMountConsole(console_id string, mountbase string) {
 	cp_bin, _ := osext.Executable()
 	var mountpoint string
 	var mountlink string
-	if valid, console, _ := isValidConsole(access_token, console_id); valid {
+	if valid, console, err := isValidConsole(access_token, console_id); valid {
 		if len(console.Title) > 0 {
 			mountlink = console.Permalink
 		} else {
@@ -288,7 +337,13 @@ func BgMountConsole(console_id string, mountbase string) {
 			}
 		}
 	} else {
-		fmt.Printf(color("This is not a valid console. Please try again \n", "response"))
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
+				fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
+			}
+		} else {
+			fmt.Printf(color("This is not a valid console. Please try again \n", "response"))
+		}
 	}
 
 }
@@ -344,7 +399,14 @@ func CmdCreateConsole(console ConsoleExtra) error {
 		}
 	}
 	fmt.Printf(color("Creating console ...", "response"))
-	container_name, console_url := CreateConsole(access_token, console)
+	container_name, console_url, err := CreateConsole(access_token, console)
+	if err != nil {
+		if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
+			fmt.Printf(color(" Error.\n", "error"))
+			fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
+			return nil
+		}
+	}
 	if container_name == "" {
 		fmt.Printf(color(" Error.\n", "error"))
 		fmt.Printf(color("There was an error creating the console. Please verify if you choose the right type.\n", "error"))

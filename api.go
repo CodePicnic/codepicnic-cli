@@ -17,6 +17,7 @@ const ERROR_NOT_CONNECTED = "Disconnected"
 const ERROR_EMPTY_CREDENTIALS = "No Credentials"
 const ERROR_EMPTY_TOKEN = "No Token"
 const ERROR_INVALID_TOKEN = "Invalid Token"
+const ERROR_USAGE_EXCEEDED = "Usage Exceeded"
 
 const TOKEN_LEN = 64
 
@@ -170,7 +171,11 @@ func ListConsoles(access_token string) ([]ConsoleJson, error) {
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 {
 		return nil, errors.New(ERROR_INVALID_TOKEN)
+	} else if resp.StatusCode == 429 {
+		return nil, errors.New(ERROR_USAGE_EXCEEDED)
 	}
+	//fmt.Println("response Status:", resp.Status)
+	//fmt.Println("response Status:", resp.StatusCode)
 	var console_collection ConsoleCollection
 	//var console_collection []ConsoleJson
 	body, err := ioutil.ReadAll(resp.Body)
@@ -185,8 +190,12 @@ func ListConsoles(access_token string) ([]ConsoleJson, error) {
 }
 
 func isValidConsole(token string, console string) (bool, ConsoleJson, error) {
-	consoles, _ := ListConsoles(token)
 	var console_empty ConsoleJson
+	consoles, err := ListConsoles(token)
+	if err != nil {
+		return false, console_empty, err
+	}
+
 	for i := range consoles {
 		if console == consoles[i].ContainerName {
 			return true, consoles[i], nil
@@ -221,6 +230,7 @@ type JsonCommand struct {
 }
 
 func ExecConsole(token string, console string, command string) ([]JsonCommand, error) {
+	var CmdCollection []JsonCommand
 	cp_consoles_url := site + "/api/consoles/" + console + "/exec"
 	cp_payload := ` { "commands": "` + command + `" }`
 	var jsonStr = []byte(cp_payload)
@@ -230,12 +240,16 @@ func ExecConsole(token string, console string, command string) ([]JsonCommand, e
 	req.Header.Set("Authorization", "Bearer "+token)
 	client := &http.Client{}
 	resp, err := client.Do(req)
+	if resp.StatusCode == 401 {
+		return CmdCollection, errors.New(ERROR_INVALID_TOKEN)
+	} else if resp.StatusCode == 429 {
+		return CmdCollection, errors.New(ERROR_USAGE_EXCEEDED)
+	}
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	var CmdCollection []JsonCommand
 
 	jsonBody, err := gabs.ParseJSON(body)
 	jsonPaths, _ := jsonBody.ChildrenMap()
@@ -246,14 +260,12 @@ func ExecConsole(token string, console string, command string) ([]JsonCommand, e
 		//Debug("key, value, type", key, child.Data().(string), jsonTypes[jsonFile.path])
 		//Debug("key, value, type", key, child.Data().(string), jsonFile.mime)
 		CmdCollection = append(CmdCollection, cmd)
-
 	}
-
 	//fmt.Printf("%+v\n", string(body))
 	return CmdCollection, nil
 }
 
-func StartConsole(access_token string, container_name string) {
+func StartConsole(access_token string, container_name string) error {
 
 	cp_consoles_url := site + "/api/consoles/" + container_name + "/start"
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
@@ -264,13 +276,40 @@ func StartConsole(access_token string, container_name string) {
 	if err != nil {
 		panic(err)
 	}
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_INVALID_TOKEN)
+	} else if resp.StatusCode == 429 {
+		return errors.New(ERROR_USAGE_EXCEEDED)
+	}
 	defer resp.Body.Close()
 	var console Console
 	_ = json.NewDecoder(resp.Body).Decode(&console)
-	return
+	return nil
 }
 
-func RestartConsole(access_token string, container_name string) {
+func StopConsole(access_token string, container_name string) error {
+
+	cp_consoles_url := site + "/api/consoles/" + container_name + "/stop"
+	req, err := http.NewRequest("POST", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_INVALID_TOKEN)
+	} else if resp.StatusCode == 429 {
+		return errors.New(ERROR_USAGE_EXCEEDED)
+	}
+	defer resp.Body.Close()
+	var console Console
+	_ = json.NewDecoder(resp.Body).Decode(&console)
+	return nil
+}
+
+func RestartConsole(access_token string, container_name string) error {
 
 	cp_consoles_url := site + "/api/consoles/" + container_name + "/restart"
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
@@ -281,10 +320,15 @@ func RestartConsole(access_token string, container_name string) {
 	if err != nil {
 		panic(err)
 	}
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_INVALID_TOKEN)
+	} else if resp.StatusCode == 429 {
+		return errors.New(ERROR_USAGE_EXCEEDED)
+	}
 	defer resp.Body.Close()
 	var console Console
 	_ = json.NewDecoder(resp.Body).Decode(&console)
-	return
+	return nil
 }
 
 func RemoveConsole(access_token string, console string) error {
@@ -295,6 +339,11 @@ func RemoveConsole(access_token string, console string) error {
 	req.Header.Set("Authorization", "Bearer "+access_token)
 	client := &http.Client{}
 	resp, err := client.Do(req)
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_INVALID_TOKEN)
+	} else if resp.StatusCode == 429 {
+		return errors.New(ERROR_USAGE_EXCEEDED)
+	}
 	if err != nil {
 		panic(err)
 	}
@@ -315,6 +364,8 @@ func ListStacks(access_token string) ([]StackJson, error) {
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 {
 		return nil, errors.New(ERROR_INVALID_TOKEN)
+	} else if resp.StatusCode == 429 {
+		return nil, errors.New(ERROR_USAGE_EXCEEDED)
 	}
 	var stack_collection StackCollection
 	body, err := ioutil.ReadAll(resp.Body)
@@ -326,4 +377,32 @@ func ListStacks(access_token string) ([]StackJson, error) {
 	//fmt.Printf("%+v\n", string(body))
 	//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
 	return stack_collection.Stacks, nil
+}
+
+func CreateConsole(access_token string, console_extra ConsoleExtra) (string, string, error) {
+
+	cp_consoles_url := site + "/api/consoles"
+
+	//cp_payload := `{ "console:    { "grant_type": "client_credentials","client_id": "` + client_id + `", "client_secret": "` + client_secret + `"}`
+	cp_payload := ` { "console": { "container_size": "` + console_extra.Size + `", "container_type": "` + console_extra.Type + `", "title": "` + console_extra.Title + `" , "hostname": "` + console_extra.Hostname + `", "current_mode": "` + console_extra.Mode + `" }  }`
+	var jsonStr = []byte(cp_payload)
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	//req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if resp.StatusCode == 401 {
+		return "", "", errors.New(ERROR_INVALID_TOKEN)
+	} else if resp.StatusCode == 429 {
+		return "", "", errors.New(ERROR_USAGE_EXCEEDED)
+	}
+	//fmt.Println("response Status:", resp.Status)
+	//fmt.Println("response Status:", resp.StatusCode)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	var console Console
+	_ = json.NewDecoder(resp.Body).Decode(&console)
+	return console.ContainerName, console.Url, nil
 }
