@@ -52,4 +52,12 @@ All command run in CLI or REPL Mode. If you don't enter parameters, the program 
     
 ## Build instructions
 
-    go build -ldflags "-X main.version=0.1 -X main.site=https://codeground.xyz -X main.swarm_host=tcp://54.88.32.109:4000" src/github.com/codepicnic/codepicnic-cli/*.go
+Clone the repository and export GOPATH
+
+Download all dependencies
+
+    go get ./...
+
+Build the binary:
+
+    go build -o codeground -ldflags "-X main.version=0.1 -X main.site=https://codeground.xyz -X main.swarm_host=tcp://mw.swarm.codeground.xyz:4000" .
