@@ -12,10 +12,7 @@ import (
 	"github.com/go-ini/ini"
 	"golang.org/x/net/context"
 	"io"
-	"io/ioutil"
 	"log"
-	"mime/multipart"
-	"net/http"
 	"os"
 	"os/signal"
 	"os/user"
@@ -230,64 +227,6 @@ func ConnectConsole(access_token string, container_name string) {
 	//fmt.Printf("done\n")
 	aResp.Conn.Close()
 	return
-}
-
-func DownloadFileFromConsole(token string, console_id string, src string, dst string) error {
-	if dst == "" {
-		dst = src
-	}
-	cp_consoles_url := site + "/api/consoles/" + console_id + "/" + src
-
-	req, err := http.NewRequest("GET", cp_consoles_url, nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	ioutil.WriteFile(dst, body, 0644)
-	return nil
-}
-
-func UploadFileToConsole(token string, console_id string, dst string, src string) (err error) {
-	if dst == "" {
-		dst = src
-	}
-	cp_consoles_url := site + "/api/consoles/" + console_id + "/upload_file"
-	var b bytes.Buffer
-	w := multipart.NewWriter(&b)
-	temp_file, err := os.Open(src)
-	fw, err := w.CreateFormFile("file", temp_file.Name())
-	if _, err = io.Copy(fw, temp_file); err != nil {
-		return
-	}
-	if fw, err = w.CreateFormField("path"); err != nil {
-		return
-	}
-	if _, err = fw.Write([]byte("/app/" + dst)); err != nil {
-		return
-	}
-	w.Close()
-	req, err := http.NewRequest("POST", cp_consoles_url, &b)
-	if err != nil {
-		fmt.Printf("Error 3 %v \n", err)
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", w.FormDataContentType())
-
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	if res.StatusCode != http.StatusOK {
-		err = fmt.Errorf("bad status: %s", res.Status)
-	}
-	return nil
 }
 
 func main() {

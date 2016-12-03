@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"github.com/Jeffail/gabs"
 	"github.com/go-ini/ini"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
-	"runtime"
+	"os"
 	"strings"
 )
 
@@ -101,7 +103,7 @@ func GetTokenAccessFromCredentials(client_id string, client_secret string) (stri
 	var jsonStr = []byte(cp_payload)
 	req, err := http.NewRequest("POST", cp_token_url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -164,7 +166,7 @@ func ListConsoles(access_token string) ([]ConsoleJson, error) {
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+" "+runtime.GOARCH+")")
+	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	//fmt.Println(time.Now().Format("20060102150405"))
 	resp, err := client.Do(req)
@@ -213,7 +215,7 @@ func JsonListConsoles(access_token string) string {
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -242,7 +244,7 @@ func ExecConsole(token string, console string, command string) ([]JsonCommand, e
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if resp.StatusCode == 401 {
@@ -276,7 +278,7 @@ func StartConsole(access_token string, container_name string) error {
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -299,7 +301,7 @@ func StopConsole(access_token string, container_name string) error {
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -322,7 +324,7 @@ func RestartConsole(access_token string, container_name string) error {
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -344,7 +346,7 @@ func RemoveConsole(access_token string, console string) error {
 	var jsonStr = []byte("")
 	req, err := http.NewRequest("DELETE", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	//req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", user_agent)
 	req.Header.Set("Authorization", "Bearer "+access_token)
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -364,7 +366,7 @@ func ListStacks(access_token string) ([]StackJson, error) {
 	cp_types_url := site + "/api/container_types.json"
 	req, err := http.NewRequest("GET", cp_types_url, nil)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", user_agent)
 	req.Header.Set("Authorization", "Bearer "+access_token)
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -417,4 +419,65 @@ func CreateConsole(access_token string, console_extra ConsoleExtra) (string, str
 	var console Console
 	_ = json.NewDecoder(resp.Body).Decode(&console)
 	return console.ContainerName, console.Url, nil
+}
+
+func DownloadFileFromConsole(token string, console_id string, src string, dst string) error {
+	if dst == "" {
+		dst = src
+	}
+	cp_consoles_url := site + "/api/consoles/" + console_id + "/" + src
+
+	req, err := http.NewRequest("GET", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("User-Agent", user_agent)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	ioutil.WriteFile(dst, body, 0644)
+	return nil
+}
+
+func UploadFileToConsole(token string, console_id string, dst string, src string) (err error) {
+	if dst == "" {
+		dst = src
+	}
+	cp_consoles_url := site + "/api/consoles/" + console_id + "/upload_file"
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+	temp_file, err := os.Open(src)
+	fw, err := w.CreateFormFile("file", temp_file.Name())
+	if _, err = io.Copy(fw, temp_file); err != nil {
+		return
+	}
+	if fw, err = w.CreateFormField("path"); err != nil {
+		return
+	}
+	if _, err = fw.Write([]byte("/app/" + dst)); err != nil {
+		return
+	}
+	w.Close()
+	req, err := http.NewRequest("POST", cp_consoles_url, &b)
+	if err != nil {
+		fmt.Printf("Error 3 %v \n", err)
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("User-Agent", user_agent)
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode != http.StatusOK {
+		err = fmt.Errorf("bad status: %s", res.Status)
+	}
+	return nil
 }
