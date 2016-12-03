@@ -9,7 +9,7 @@ import (
 func GetOSVersion() string {
 
 	os_version := "macOS"
-	var dist, release string
+	var dist string
 	out, err := exec.Command("sw_vers").Output()
 	if err != nil {
 		os_version = "macOs"
