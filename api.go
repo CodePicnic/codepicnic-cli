@@ -9,7 +9,7 @@ import (
 	"github.com/go-ini/ini"
 	"io/ioutil"
 	"net/http"
-"runtime"
+	"runtime"
 	"strings"
 )
 
@@ -101,7 +101,7 @@ func GetTokenAccessFromCredentials(client_id string, client_secret string) (stri
 	var jsonStr = []byte(cp_payload)
 	req, err := http.NewRequest("POST", cp_token_url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -164,7 +164,7 @@ func ListConsoles(access_token string) ([]ConsoleJson, error) {
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+" "+runtime.GOARCH+")")
+	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+" "+runtime.GOARCH+")")
 	client := &http.Client{}
 	//fmt.Println(time.Now().Format("20060102150405"))
 	resp, err := client.Do(req)
@@ -213,7 +213,7 @@ func JsonListConsoles(access_token string) string {
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -242,7 +242,7 @@ func ExecConsole(token string, console string, command string) ([]JsonCommand, e
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if resp.StatusCode == 401 {
@@ -276,7 +276,7 @@ func StartConsole(access_token string, container_name string) error {
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -299,7 +299,7 @@ func StopConsole(access_token string, container_name string) error {
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -322,7 +322,7 @@ func RestartConsole(access_token string, container_name string) error {
 	req, err := http.NewRequest("POST", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -344,7 +344,7 @@ func RemoveConsole(access_token string, console string) error {
 	var jsonStr = []byte("")
 	req, err := http.NewRequest("DELETE", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	//req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
 	req.Header.Set("Authorization", "Bearer "+access_token)
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -364,7 +364,7 @@ func ListStacks(access_token string) ([]StackJson, error) {
 	cp_types_url := site + "/api/container_types.json"
 	req, err := http.NewRequest("GET", cp_types_url, nil)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+" ("+runtime.GOOS+")")
 	req.Header.Set("Authorization", "Bearer "+access_token)
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -399,8 +399,8 @@ func CreateConsole(access_token string, console_extra ConsoleExtra) (string, str
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	//req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
-	//req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")")
-	req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+GetOSVersion()+")")
+	//req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+GetOSVersion()+")")
+	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if resp.StatusCode == 401 {

@@ -40,6 +40,8 @@ var site string
 var swarm_host string
 var format string
 
+var user_agent = "CodePicnic-CLI/" + version + " (" + GetOSVersion() + ")"
+
 //const site = "https://codeground.xyz"
 
 //const swarm_host = "tcp://52.200.53.168:4000"
