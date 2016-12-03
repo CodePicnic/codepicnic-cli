@@ -15,6 +15,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -89,6 +90,7 @@ func ListFiles(access_token string, container_name string, path string) []File {
 		req, err := http.NewRequest("GET", cp_consoles_url, nil)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+access_token)
+		req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")") 
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -395,6 +397,7 @@ func (f *File) ReadFile() (string, error) {
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+f.fs.token)
+		req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")") 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -447,6 +450,7 @@ func (d *Dir) CreateDir(newdir string) (err error) {
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+		req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")") 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -467,6 +471,7 @@ func (d *Dir) CreateFile(newfile string) (err error) {
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+		req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")") 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -487,6 +492,7 @@ func (d *Dir) RemoveFile(file string) (err error) {
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+		req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")") 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -533,6 +539,7 @@ func (f *File) UploadFile() (err error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+f.fs.token)
 	req.Header.Set("Content-Type", w.FormDataContentType())
+		req.Header.Set("User-Agent", "CodePicnic-CLI/"+version+ " ("+runtime.GOOS+")") 
 
 	client := &http.Client{}
 	res, err := client.Do(req)
