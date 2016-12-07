@@ -162,7 +162,7 @@ func SaveCredentialsToFile(client_id string, client_secret string) {
 
 func ListConsoles(access_token string) ([]ConsoleJson, error) {
 
-	cp_consoles_url := site + "/api/consoles/all"
+	cp_consoles_url := site + "/api/consoles/all.json"
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access_token)
