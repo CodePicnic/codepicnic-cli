@@ -7,7 +7,7 @@ import (
 )
 
 func GetOSVersion() string {
-	os_version := "Windows"
+	os_version := "Windows 10"
 	/*
 		var dist, release string
 		out, err := exec.Command("lsb_release", "-a").Output()
