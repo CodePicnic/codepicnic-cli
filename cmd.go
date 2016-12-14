@@ -133,6 +133,7 @@ func CmdConfigure() error {
 	SaveCredentialsToFile(client_id, client_secret)
 	SaveTokenToFile(access_token)
 	fmt.Printf(color("Done.\n", "response"))
+	fmt.Printf(color(msg_bugs+"\n", "response"))
 	return nil
 }
 func CmdClearScreen() error {
@@ -243,7 +244,6 @@ func CmdMountConsole(args []string) error {
 		} else {
 			mount_point = ""
 		}
-		Debug("MountPoint", mount_point)
 		fmt.Printf("Mounting /app directory ... \n")
 		fmt.Printf("TIP: If you want to mount in the background please add \"&\" at the end of the mount command. \n")
 		MountConsole(access_token, args[0], mount_point)
@@ -321,7 +321,7 @@ func BgMountConsole(console_id string, mountbase string) {
 			mountpoint = mountbase + "/" + mountlink
 		} else {
 			pwd, _ := os.Getwd()
-			mountpoint = pwd + "/" + mountbase + "/" + mountlink
+			mountpoint = pwd + mountbase + "/" + mountlink
 		}
 		if _, err := os.Stat(mountpoint); err == nil {
 			fmt.Printf(color("Mount point %s already exists, please remove it or try to mount in a different directory \n", "response"), mountpoint)

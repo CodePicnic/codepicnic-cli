@@ -119,7 +119,6 @@ func Repl(c *cli.Context) {
 	var console_id string
 	var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string
 
-	debug = false
 	CmdValidateCredentials()
 	input := ""
 	for input != "." {

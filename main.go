@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
@@ -12,7 +13,6 @@ import (
 	"github.com/go-ini/ini"
 	"golang.org/x/net/context"
 	"io"
-	"log"
 	"os"
 	"os/signal"
 	"os/user"
@@ -28,9 +28,11 @@ import (
 const FragSeparator = ':'
 const cfg_dir = ".codepicnic"
 const cfg_file = "config"
+const cfg_log = "codepicnic.log"
 const share_dir_darwin = "/usr/local/codepicnic"
 const share_dir_linux = "/usr/share/codepicnic"
 const notify_file = "codepicnic.png"
+const msg_bugs = "While where’re on beta, please write us your thoughts/bugs at bugs@codepicnic.com"
 
 var version string
 var site string
@@ -38,14 +40,8 @@ var swarm_host string
 var format string
 
 var user_agent = "CodePicnic-CLI/" + version + " (" + GetOSVersion() + ")"
-
-//const site = "https://codeground.xyz"
-
-//const swarm_host = "tcp://52.200.53.168:4000"
-
-//const swarm_host = "tcp://54.88.32.109:4000"
-
-var debug = true
+var config_dir = getHomeDir() + string(filepath.Separator) + cfg_dir
+var msg_rwperms = "Make sure you have read and write permissions to " + config_dir + " directory."
 
 // https://github.com/docker/docker/blob/master/cli/command/container/cp.go
 func splitContainerFromPath(arg string) (container, path string) {
@@ -62,21 +58,13 @@ func splitContainerFromPath(arg string) (container, path string) {
 	return parts[0], parts[1]
 }
 
-func Debug(print string, values ...string) error {
-	if debug {
-		fmt.Printf("DEBUG %s %v \n", print, values)
-	}
-	return nil
-}
-
 func CreateConfigDir() {
-	config_dir := getHomeDir() + string(filepath.Separator) + cfg_dir
 	config_file := config_dir + string(filepath.Separator) + cfg_file
 	os.Mkdir(config_dir, 0755)
 	if _, err := os.Stat(config_file); os.IsNotExist(err) {
 		f, err := os.Create(config_file)
 		if err != nil {
-			panic(err)
+			fmt.Println(color(msg_rwperms, "error"))
 		}
 		f.Close()
 	}
@@ -92,7 +80,7 @@ func SaveMountsToFile(container string, mountpoint string) {
 	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 
 	if err != nil {
-		panic(err)
+		fmt.Println(color(msg_rwperms, "error"))
 	}
 	return
 
@@ -101,7 +89,8 @@ func SaveMountsToFile(container string, mountpoint string) {
 func GetMountsFromFile(container string) string {
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
-		panic(err)
+		fmt.Println(color("Error.", "error"))
+		fmt.Println(color(msg_rwperms, "error"))
 	}
 	mountpoint := cfg.Section("mounts").Key(container).String()
 	return mountpoint
@@ -112,13 +101,15 @@ func SaveTokenToFile(access_token string) {
 
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
-		panic(err)
+		fmt.Println(color("Error.", "error"))
+		fmt.Println(color(msg_rwperms, "error"))
 	}
 	cfg.Section("credentials").Key("access_token").SetValue(access_token)
 	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 
 	if err != nil {
-		panic(err)
+		fmt.Println(color("Error.", "error"))
+		fmt.Println(color(msg_rwperms, "error"))
 	}
 	return
 
@@ -128,8 +119,7 @@ func getHomeDir() string {
 
 	user_data, err := user.Current()
 	if err != nil {
-		fmt.Println("error")
-		panic(err)
+		panic(msg_bugs)
 	}
 	return user_data.HomeDir
 
@@ -157,26 +147,26 @@ func ConnectConsole(access_token string, container_name string) {
 	defaultHeaders := map[string]string{"User-Agent": "Docker-Client/1.10.3 (linux)"}
 	cli, err := client.NewClient(swarm_host, "v1.22", nil, defaultHeaders)
 	if err != nil {
-		fmt.Println("e1", err)
-		panic(err)
+		logrus.Fatalf("Error NewClient: %s", err)
+		panic(msg_bugs)
 	}
 	//r, err := cli.ContainerInspect(context.Background(), container_name)
 	r, err := cli.ContainerExecCreate(context.Background(), container_name, types.ExecConfig{User: "", Cmd: []string{"bash"}, Tty: true, AttachStdin: true, AttachStderr: true, AttachStdout: true, Detach: false})
 	if err != nil {
-		fmt.Println("e2", err)
-		panic(err)
+		logrus.Fatalf("Error ExecCreate: %s", err)
+		panic(msg_bugs)
 	}
 	//fmt.Println(r.ID)
 
 	aResp, err := cli.ContainerExecAttach(context.Background(), r.ID, types.ExecConfig{Tty: true, Cmd: []string{"bash"}, Env: nil, AttachStdin: true, AttachStderr: true, AttachStdout: true, Detach: false})
 
 	if err != nil {
-		fmt.Println("e3", err)
-		panic(err)
+		logrus.Fatalf("Error ExecAttach: %s", err)
+		panic(msg_bugs)
 	}
 	tty := true
 	if err != nil {
-		log.Fatalf("Couldn't attach to container: %s", err)
+		logrus.Fatalf("Couldn't attach to container: %s", err)
 	}
 	defer aResp.Close()
 	receiveStdout := make(chan error, 1)
@@ -204,7 +194,7 @@ func ConnectConsole(access_token string, container_name string) {
 			if strings.HasSuffix(err.Error(), "use of closed network connection") {
 				//Connection already closed
 			} else {
-				log.Fatalf("Couldn't send EOF: %s", err)
+				logrus.Fatalf("Couldn't send EOF: %s", err)
 			}
 		}
 		//close(stdinDone)
@@ -213,12 +203,12 @@ func ConnectConsole(access_token string, container_name string) {
 	select {
 	case err := <-receiveStdout:
 		if err != nil {
-			log.Fatalf("Error receiveStdout: %s", err)
+			logrus.Fatalf("Error receiveStdout: %s", err)
 		}
 	case <-stdinDone:
 		if os.Stdout != nil || os.Stderr != nil {
 			if err := <-receiveStdout; err != nil {
-				log.Fatalf("Error receiveStdout: %s", err)
+				logrus.Fatalf("Error receiveStdout: %s", err)
 			}
 		}
 	}
@@ -227,6 +217,15 @@ func ConnectConsole(access_token string, container_name string) {
 	//fmt.Printf("done\n")
 	aResp.Conn.Close()
 	return
+}
+
+func init() {
+	log_file := config_dir + string(filepath.Separator) + cfg_log
+	log_fh, err := os.OpenFile(log_file, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+	if err != nil {
+	}
+	//defer log_fh.Close()
+	logrus.SetOutput(log_fh)
 }
 
 func main() {
@@ -544,13 +543,13 @@ func main() {
 		{
 			Name:  "mount",
 			Usage: "mount /app filesystem from a container",
-			Flags: []cli.Flag{
-				cli.BoolFlag{
-					Name:        "debug",
-					Usage:       "Debugging",
-					Destination: &debug,
-				},
-			},
+			//Flags: []cli.Flag{
+			//	cli.BoolFlag{
+			//		Name:        "debug",
+			//		Usage:       "Debugging",
+			//		Destination: &debug,
+			//	},
+			//},
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 
@@ -592,13 +591,13 @@ func main() {
 			Name:   "bgmount",
 			Usage:  "mount /app filesystem from a container",
 			Hidden: true,
-			Flags: []cli.Flag{
-				cli.BoolFlag{
-					Name:        "debug",
-					Usage:       "Debugging",
-					Destination: &debug,
-				},
-			},
+			//Flags: []cli.Flag{
+			//	cli.BoolFlag{
+			//		Name:        "debug",
+			//		Usage:       "Debugging",
+			//		Destination: &debug,
+			//	},
+			//},
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				CmdMountConsole(c.Args())
@@ -661,13 +660,13 @@ func main() {
 		{
 			Name:  "unmount",
 			Usage: "unmount /app filesystem from a container",
-			Flags: []cli.Flag{
-				cli.BoolFlag{
-					Name:        "debug",
-					Usage:       "Debugging",
-					Destination: &debug,
-				},
-			},
+			//Flags: []cli.Flag{
+			//	cli.BoolFlag{
+			//		Name:        "debug",
+			//		Usage:       "Debugging",
+			//		Destination: &debug,
+			//	},
+			//},
 			Action: func(c *cli.Context) error {
 				//access_token, _ := GetTokenAccess()
 				/*if access_token == "" {
