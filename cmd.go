@@ -136,6 +136,23 @@ func CmdConfigure() error {
 	fmt.Printf(color(msg_bugs+"\n", "response"))
 	return nil
 }
+
+func CmdConfigureCredentials(client_id string, client_secret string) error {
+	CreateConfigDir()
+	access_token, err := GetTokenAccessFromCredentials(client_id, client_secret)
+	if err != nil {
+		fmt.Println("Error: ", err)
+		return nil
+	}
+	fmt.Printf(color("Done. Token: %s \n", "response"), access_token)
+	fmt.Printf(color("Saving credentials... ", "response"))
+	SaveCredentialsToFile(client_id, client_secret)
+	SaveTokenToFile(access_token)
+	fmt.Printf(color("Done.\n", "response"))
+	fmt.Printf(color(msg_bugs+"\n", "response"))
+	return nil
+}
+
 func CmdClearScreen() error {
 	ClearScreen()
 	return nil

@@ -289,6 +289,7 @@ func main() {
 	app.Name = "codepicnic"
 	app.Usage = "A CLI tool to manage your CodePicnic consoles"
 	var container_size, container_type, title, hostname, current_mode string
+	var client_id, client_secret string
 
 	app.Action = func(c *cli.Context) error {
 		//Start the REPL if not argument given
@@ -318,8 +319,24 @@ func main() {
 		{
 			Name:  "configure",
 			Usage: "save configuration",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:        "id",
+					Value:       "",
+					Destination: &client_id,
+				},
+				cli.StringFlag{
+					Name:        "secret",
+					Value:       "",
+					Destination: &client_secret,
+				},
+			},
 			Action: func(c *cli.Context) error {
-				CmdConfigure()
+				if c.NumFlags() == 0 {
+					CmdConfigure()
+				} else {
+					CmdConfigureCredentials(client_id, client_secret)
+				}
 				return nil
 			},
 		},
