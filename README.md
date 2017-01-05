@@ -59,5 +59,7 @@ Download all dependencies
     go get ./...
 
 Build the binary:
-
+    
+    export GOPATH=/home/hdanniel/codepicnic/cli (linux/mac)
+    export GOPATH=C:\Users\hector\codepicnic\codepicnic-cli (windows)
     go build -o codeground -ldflags "-X main.version=0.1 -X main.site=https://codeground.xyz -X main.swarm_host=tcp://mw.codeground.xyz:4430" github.com/codepicnic/codepicnic-cli/
