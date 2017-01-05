@@ -60,4 +60,4 @@ Download all dependencies
 
 Build the binary:
 
-    go build -o codeground -ldflags "-X main.version=0.1 -X main.site=https://codeground.xyz -X main.swarm_host=tcp://mw.swarm.codeground.xyz:4000" .
+    go build -o codeground -ldflags "-X main.version=0.1 -X main.site=https://codeground.xyz -X main.swarm_host=tcp://mw.codeground.xyz:4430" github.com/codepicnic/codepicnic-cli/
