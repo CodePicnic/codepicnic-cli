@@ -485,9 +485,15 @@ func (d *Dir) CreateFile(newfile string) (err error) {
 
 func (d *Dir) RemoveFile(file string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
-	cp_payload := ` { "commands": "rm ` + file + `" }`
+	var cp_payload string
+	if strings.HasPrefix(d.path, "/") {
+		cp_payload = ` { "commands": "rm ` + file + `" }`
+	} else {
+		cp_payload = ` { "commands": "rm ` + d.path + "/" + file + `" }`
+	}
 	var jsonStr = []byte(cp_payload)
 
+	//logrus.Infof("Remove file %s", d.path+"/"+file)
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+d.fs.token)
@@ -495,9 +501,11 @@ func (d *Dir) RemoveFile(file string) (err error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		logrus.Errorf("RemoveFile %v", err)
+		//logrus.Errorf("RemoveFile %v", err)
 		return err
 	}
+	cache_key := d.fs.container + ":" + d.path
+	cp_cache.Delete(cache_key)
 	defer resp.Body.Close()
 	return nil
 }
@@ -691,13 +699,14 @@ var _ = fs.NodeRemover(&Dir{})
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
 	logrus.Infof("Remove %v %v", req.Name, strconv.FormatBool(req.Dir))
-	/*switch req.Dir {
+	switch req.Dir {
 	case true:
 		return fuse.ENOENT
 
 	case false:
 		d.RemoveFile(req.Name)
-		return fuse.ENOENT
-	}*/
+		return nil
+		//return fuse.ENOENT
+	}
 	return nil
 }
