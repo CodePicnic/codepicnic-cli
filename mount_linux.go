@@ -486,14 +486,14 @@ func (d *Dir) CreateFile(newfile string) (err error) {
 func (d *Dir) RemoveFile(file string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
-	if strings.HasPrefix(d.path, "/") {
+	logrus.Infof("Remove file %s", d.path+" / "+file)
+	if d.path == "" {
 		cp_payload = ` { "commands": "rm ` + file + `" }`
 	} else {
 		cp_payload = ` { "commands": "rm ` + d.path + "/" + file + `" }`
 	}
 	var jsonStr = []byte(cp_payload)
 
-	//logrus.Infof("Remove file %s", d.path+"/"+file)
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+d.fs.token)
