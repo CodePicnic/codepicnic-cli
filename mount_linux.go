@@ -15,6 +15,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,12 +63,12 @@ type File struct {
 	mime       string
 	mountpoint string
 	mu         sync.Mutex
-	content    []byte
 	data       []byte
 	writers    uint
 	fs         *FS
 	size       uint64
 	dir        *Dir
+	swap       bool
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -288,6 +289,8 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 var _ = fs.NodeRequestLookuper(&Dir{})
 
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
+	//logrus.Infof("Lookup d.path = %s", d.path)
+	//logrus.Infof("Lookup req.Name = %s", req.Name)
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
@@ -311,6 +314,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				mimemap: make(map[string]string),
 				sizemap: make(map[string]uint64),
 			}
+			//logrus.Infof("Lookup d dir = %v", d)
 			return child, nil
 		default:
 			//Debug("Lookup FILE", path)
@@ -324,16 +328,19 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				dir:        d,
 				mountpoint: d.mountpoint,
 			}
+			//logrus.Infof("Lookup d file = %v", d)
 			return child, nil
 			//}
 		}
 	}
+	//logrus.Infof("Lookup d = %v", d)
 	return nil, fuse.ENOENT
 }
 
 var _ = fs.HandleReadDirAller(&Dir{})
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	//logrus.Infof("ReadDirAll d.path = %s", d.path)
 	var res []fuse.Dirent
 	var inode fuse.Dirent
 	for _, f := range ListFiles(d.fs.token, d.fs.container, d.path) {
@@ -379,6 +386,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	} else {
 		a.Mode = 0777
 	}
+	//a.Size = uint64(len(f.data))
 	a.Size = f.size
 	/*
 		t, _ := f.ReadFile()
@@ -417,6 +425,9 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	//	return nil, fuse.Errno(syscall.EACCES)
 	//}
 	logrus.Infof("Open %s", f.name)
+	//logrus.Infof("Open Req %v", req)
+	//logrus.Infof("Open Context %v", ctx)
+	//logrus.Infof("Open Attr %v", f.Attr)
 	/*
 		if strings.HasSuffix(f.name, ".swp") {
 			fmt.Printf("Open SWP %v\n", f.name)
@@ -425,6 +436,8 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			resp.Flags |= fuse.OpenKeepCache
 		}*/
 	resp.Flags |= fuse.OpenKeepCache
+	//logrus.Infof("Open Resp %v", resp)
+	//logrus.Infof("Open f %v", f)
 	//f.writers++
 	return f, nil
 	//return &FileHandle{path: f.path}, nil
@@ -463,6 +476,7 @@ func (d *Dir) CreateDir(newdir string) (err error) {
 }
 
 func (d *Dir) CreateFile(newfile string) (err error) {
+	logrus.Infof("CreateFile %s", newfile)
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/create_file"
 	cp_payload := ` { "path": "` + newfile + `" }`
 	var jsonStr = []byte(cp_payload)
@@ -504,8 +518,6 @@ func (d *Dir) RemoveFile(file string) (err error) {
 		//logrus.Errorf("RemoveFile %v", err)
 		return err
 	}
-	cache_key := d.fs.container + ":" + d.path
-	cp_cache.Delete(cache_key)
 	defer resp.Body.Close()
 	return nil
 }
@@ -561,6 +573,8 @@ func (f *File) UploadFile() (err error) {
 	if err != nil {
 		logrus.Errorf("Remove temp_file %v", err)
 	}
+	cache_key := f.dir.fs.container + ":" + f.dir.path
+	cp_cache.Delete(cache_key)
 	return
 }
 
@@ -568,6 +582,9 @@ var _ = fs.NodeCreater(&Dir{})
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	logrus.Infof("Create %v %s", req.Name, d.path)
+	//logrus.Infof("Create Context %v", ctx)
+	//logrus.Infof("Create Flags %s", req.Flags.String())
+
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
@@ -584,12 +601,17 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		d.mimemap = make(map[string]string)
 	}
 	d.mimemap[f.name] = "inode/x-empty"
-	if d.path == "/" {
-		d.CreateFile(req.Name)
-		//} else if strings.HasSuffix(f.name, ".swp") {
-		//	return f, f, nil
+	if strings.Contains(req.Flags.String(), "OpenExclusive") {
+		//logrus.Infof("File %s Exclusive", req.Name)
+		f.swap = true
 	} else {
-		d.CreateFile(d.path + "/" + req.Name)
+		if d.path == "/" {
+			d.CreateFile(req.Name)
+			//} else if strings.HasSuffix(f.name, ".swp") {
+			//	return f, f, nil
+		} else {
+			d.CreateFile(d.path + "/" + req.Name)
+		}
 	}
 	return f, f, nil
 }
@@ -642,21 +664,26 @@ var _ = fs.HandleFlusher(&File{})
 
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	//Debug("Flush", f.name, strconv.Itoa(req.Flags))
-	//logrus.Infof("Flush %v", f.name)
+	logrus.Infof("Flush %v %v", f.name, f.writers)
+	//logrus.Infof("Flush Flags %v", req.Flags)
 	//Debug("Flush Writers", strconv.Itoa(int(f.writers)))
 
 	if f.writers == 0 {
 		// Read-only handles also get flushes. Make sure we don't
 		// overwrite valid file contents with a nil buffer.
-		logrus.Infof("Flush Read Only")
+		//logrus.Infof("Flush Read Only")
 		return nil
 	}
 
 	//logrus.Infof("Flush Write")
-	cache_key := f.dir.fs.container + ":" + f.dir.path
+	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.?$`, f.name)
+	isBackupFile, _ := regexp.MatchString(`^.+?~$`, f.name)
+	is4913, _ := regexp.MatchString(`^4913$`, f.name)
+	if isSwapFile == false && isBackupFile == false && is4913 == false {
+		f.UploadFile()
+	} else {
+	}
 	//logrus.Infof("Invalidate cache %s", cache_key)
-	cp_cache.Delete(cache_key)
-	f.UploadFile()
 	return nil
 }
 
@@ -664,6 +691,7 @@ var _ = fs.HandleReleaser(&File{})
 
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	//logrus.Infof("Release %v", f.name)
+	logrus.Infof("Release %v %v", f.name, f.writers)
 	if req.Flags.IsReadOnly() {
 		// we don't need to track read-only handles
 		//	return nil
@@ -704,9 +732,37 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		return fuse.ENOENT
 
 	case false:
-		d.RemoveFile(req.Name)
+		isSwapFile, _ := regexp.MatchString(`^.+?\.sw.?$`, req.Name)
+		isBackupFile, _ := regexp.MatchString(`^.+?~$`, req.Name)
+		is4913, _ := regexp.MatchString(`^4913$`, req.Name)
+		if isSwapFile == false && isBackupFile == false && is4913 == false {
+			//logrus.Infof("Remove Normal File %s", req.Name)
+			d.RemoveFile(req.Name)
+		} else {
+			//logrus.Infof("Remove Swap File %s", req.Name)
+			//go d.RemoveFile(req.Name)
+		}
+		cache_key := d.fs.container + ":" + d.path
+		cp_cache.Delete(cache_key)
+		delete(d.mimemap, req.Name)
+		delete(d.sizemap, req.Name)
 		return nil
 		//return fuse.ENOENT
 	}
 	return nil
+}
+
+//var _ = fs.NodeFsyncer(&Dir{})
+
+func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
+	//logrus.Infof("Fsync %v %s", req, f.name)
+	return nil
+}
+
+//var _ = fs.NodeGetattrer(&File{})
+
+func (f *File) GetAttr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
+	//logrus.Infof("GetAttr %v", req)
+	//logrus.Infof("GetAttr Attr %v", f.Attr)
+	return f.Attr(ctx, &resp.Attr)
 }
