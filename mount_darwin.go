@@ -581,7 +581,7 @@ func (f *File) UploadFile() (err error) {
 	cp_consoles_url := site + "/api/consoles/" + f.fs.container + "/upload_file"
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
-	//logrus.Infof("Upload Data %s", string(f.data))
+	logrus.Infof("Upload Data %s", string(f.data))
 	temp_file, err := ioutil.TempFile(os.TempDir(), "cp_")
 	err = ioutil.WriteFile(temp_file.Name(), f.data, 0666)
 	if err != nil {
@@ -694,19 +694,18 @@ var _ = fs.HandleWriter(&File{})
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	f.writers = 1
 	logrus.Infof("Write %s", f.name)
-	//fmt.Printf("Req Data %v \n", req.Data)
-	//fmt.Printf("Req Len %v \n", int64(len(req.Data)))
-	//fmt.Printf("Req Offset %v \n", req.Offset)
+	logrus.Infof("Write req.Data  %s", string(req.Data))
+	logrus.Infof("Write f.Data  %s", string(f.data))
+	logrus.Infof("Write len req.Data  %v", int64(len(req.Data)))
+	logrus.Infof("Write req.Offset  %v", req.Offset)
+	
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// expand the buffer if necessary
 	newLen := req.Offset + int64(len(req.Data))
-	//fmt.Printf("Req NewLen %v \n", newLen)
-	//fmt.Printf("Req Len File %v \n", len(f.data))
-	//fmt.Printf("Req Size File %v \n", f.size)
+	logrus.Infof("Write newLen  %v", req.Offset)
 	if newLen > int64(maxInt) {
-		//fmt.Printf("Write ERROR %v \n", f.name)
 		return fuse.Errno(syscall.EFBIG)
 	}
 
@@ -714,20 +713,26 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
 	}*/
 	//use file size is better than len(f.data)
-	if newLen := int(newLen); newLen > int(f.size) {
-		f.data = append(f.data, make([]byte, newLen-int(f.size))...)
-	} else if newLen < int(f.size) {
+	logrus.Infof("Write newLen = %v vs int(f.size) = %v ", newLen, int(f.size))
+	//if newLen := int(newLen); newLen > int(f.size) {
+	if newLen := int(newLen); newLen > len(f.data) {
+		//f.data = append(f.data, make([]byte, newLen-int(f.size))...)
+		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
+		logrus.Infof("Write f.Data after append  %s", string(f.data))
+	//} else if newLen < int(f.size) {
+	} else if newLen < len(f.data) {
 		//if newLen is < f.size we need to shrink the slice
-		fmt.Printf("Req NewLen %v \n", newLen)
-		fmt.Printf("f.data %v \n", f.data)
 		//f.data = append([]byte(nil), f.data[:newLen]...)
 		f.data = append([]byte(nil), req.Data[:newLen]...)
 	}
 
 	n := copy(f.data[req.Offset:], req.Data)
-	resp.Size = n
-	f.size = uint64(n)
-	//fmt.Printf("Resp Size File %v \n", n)
+	logrus.Infof("Write f.Data after write  %s", string(f.data))
+	logrus.Infof("Write n  %v", n)
+	//resp.Size = n
+	//f.size = uint64(n)
+	resp.Size = len(req.Data)
+	f.size = uint64(len(req.Data))
 	return nil
 }
 
@@ -762,6 +767,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 		}
 
 	} else {
+	logrus.Infof("Swap File %v %v %v ", isSwapFile, isBackupFile, is4913)
 	}
 	//logrus.Infof("Invalidate cache %s", cache_key)
 	return nil
