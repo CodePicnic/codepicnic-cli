@@ -5,6 +5,7 @@ import (
 	"bazil.org/fuse/fs"
 	"bazil.org/fuse/fuseutil"
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/Jeffail/gabs"
 	"github.com/Sirupsen/logrus"
@@ -78,13 +79,14 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
-func ListFiles(access_token string, container_name string, path string) []File {
+func ListFiles(access_token string, container_name string, path string) ([]File, error) {
 	cache_key := container_name + ":" + path
 	var FileCollection []File
 	FileCollectionCache, found := cp_cache.Get(cache_key)
 	if found {
 		FileCollection = FileCollectionCache.([]File)
 	} else {
+
 		cp_consoles_url := site + "/api/consoles/" + container_name + "/files?path=" + path
 		req, err := http.NewRequest("GET", cp_consoles_url, nil)
 		req.Header.Set("Content-Type", "application/json")
@@ -97,6 +99,10 @@ func ListFiles(access_token string, container_name string, path string) []File {
 			panic(err)
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode == 401 {
+			return FileCollection, errors.New(ERROR_NOT_AUTHORIZED)
+		}
+
 		body, err := ioutil.ReadAll(resp.Body)
 		jsonFiles, err := gabs.ParseJSON(body)
 		//logrus.Infof("List files %+v", string(body))
@@ -130,7 +136,7 @@ func ListFiles(access_token string, container_name string, path string) []File {
 		//fmt.Printf("%+v\n", string(body))
 		//fmt.Printf("%#v\n", console_collection.Consoles[0].Title)
 	}
-	return FileCollection
+	return FileCollection, nil
 }
 
 func UnmountConsole(container_name string) error {
@@ -291,6 +297,13 @@ var _ = fs.NodeRequestLookuper(&Dir{})
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
 	//logrus.Infof("Lookup d.path = %s", d.path)
 	//logrus.Infof("Lookup req.Name = %s", req.Name)
+	if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
+		child := &File{
+			size: 0,
+			name: req.Name,
+		}
+		return child, nil
+	}
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
@@ -339,45 +352,67 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 var _ = fs.HandleReadDirAller(&Dir{})
 
+func CreateErrorInode() fuse.Dirent {
+	var inode fuse.Dirent
+	inode.Name = "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT"
+	inode.Type = fuse.DT_File
+	return inode
+}
+
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	//logrus.Infof("ReadDirAll d.path = %s", d.path)
 	var res []fuse.Dirent
 	var inode fuse.Dirent
-	for _, f := range ListFiles(d.fs.token, d.fs.container, d.path) {
-		//Debug("File List", f.name)
-		//Debug("File List", f.mime)
-		inode.Name = f.name
-		if d.mimemap == nil {
-			d.mimemap = make(map[string]string)
-		}
-		if d.sizemap == nil {
-			d.sizemap = make(map[string]uint64)
-		}
-		//_, ok := d.mimemap[f.name]
-		//if !ok {
-		//	d.mimemap[f.name] = make([]string, "")
-		//}
-		path := f.name
-		if d.path != "" {
-			path = d.path + "/" + path
-		}
-		//d.mimemap[f.name] = f.mime
-		d.mimemap[path] = f.mime
-		d.sizemap[path] = f.size
-		if f.mime == "inode/directory" {
-			inode.Type = fuse.DT_Dir
+	files_list, err := ListFiles(d.fs.token, d.fs.container, d.path)
+	if err != nil {
+		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+			//Probably the token expired, try again
+			logrus.Infof("Token expired, generating a new one")
+			d.fs.token, err = GetTokenAccess()
+			files_list, err = ListFiles(d.fs.token, d.fs.container, d.path)
 		} else {
-			inode.Type = fuse.DT_File
+			res = append(res, CreateErrorInode())
+			return res, nil
 		}
-		res = append(res, inode)
+	} else {
+
+		for _, f := range files_list {
+			//Debug("File List", f.name)
+			//Debug("File List", f.mime)
+			inode.Name = f.name
+			if d.mimemap == nil {
+				d.mimemap = make(map[string]string)
+			}
+			if d.sizemap == nil {
+				d.sizemap = make(map[string]uint64)
+			}
+			//_, ok := d.mimemap[f.name]
+			//if !ok {
+			//	d.mimemap[f.name] = make([]string, "")
+			//}
+			path := f.name
+			if d.path != "" {
+				path = d.path + "/" + path
+			}
+			//d.mimemap[f.name] = f.mime
+			d.mimemap[path] = f.mime
+			d.sizemap[path] = f.size
+			if f.mime == "inode/directory" {
+				inode.Type = fuse.DT_Dir
+			} else {
+				inode.Type = fuse.DT_File
+			}
+			res = append(res, inode)
+		}
+		//fmt.Printf("End ReadDirAll \n")
 	}
-	//fmt.Printf("End ReadDirAll \n")
 	return res, nil
 }
 
 var _ fs.Node = (*File)(nil)
 
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
+	//logrus.Infof("File Attr name = %s, path = %s", f.name, f.path)
 	//a.Inode = 1
 	//fmt.Printf("File Attr %s %s \n", f.name, f.mime)
 	//Debug("File Attr", f.name)
@@ -412,6 +447,9 @@ func (f *File) ReadFile() (string, error) {
 		panic(err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == 401 {
+		return "", errors.New(ERROR_NOT_AUTHORIZED)
+	}
 	body, err := ioutil.ReadAll(resp.Body)
 	//Debug("ReadFile", string(body))
 	return string(body), nil
@@ -449,7 +487,15 @@ var _ fs.HandleReader = (*File)(nil)
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	//t := f.content.Load().(string)
-	t, _ := f.ReadFile()
+	t, err := f.ReadFile()
+	if err != nil {
+		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+			//Probably the token expired, try again
+			logrus.Infof("Token expired, generating a new one")
+			f.fs.token, err = GetTokenAccess()
+			t, err = f.ReadFile()
+		}
+	}
 	fuseutil.HandleRead(req, resp, []byte(t))
 	return nil
 }
@@ -465,13 +511,16 @@ func (d *Dir) CreateDir(newdir string) (err error) {
 	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
 	if err != nil {
 		logrus.Errorf("CreateDir %v", err)
 		return err
 	}
 	cache_key := d.fs.container + ":" + d.path
 	cp_cache.Delete(cache_key)
-	defer resp.Body.Close()
 	return nil
 }
 
@@ -487,13 +536,16 @@ func (d *Dir) CreateFile(newfile string) (err error) {
 	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
 	if err != nil {
 		logrus.Errorf("CreateFile %v", err)
 		return err
 	}
 	cache_key := d.fs.container + ":" + d.path
 	cp_cache.Delete(cache_key)
-	defer resp.Body.Close()
 	return nil
 }
 
@@ -514,11 +566,14 @@ func (d *Dir) RemoveFile(file string) (err error) {
 	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
+	defer resp.Body.Close()
 	if err != nil {
 		//logrus.Errorf("RemoveFile %v", err)
 		return err
 	}
-	defer resp.Body.Close()
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
 	return nil
 }
 
@@ -560,13 +615,17 @@ func (f *File) UploadFile() (err error) {
 	req.Header.Set("User-Agent", user_agent)
 
 	client := &http.Client{}
-	res, err := client.Do(req)
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
 	//logrus.Infof("Upload %s", strconv.Itoa(res.StatusCode))
-	if res.StatusCode != http.StatusOK {
-		err = fmt.Errorf("bad status: %s", res.Status)
+	//if resp.StatusCode != http.StatusOK {
+	//	err = fmt.Errorf("bad status: %s", res.Status)
+	//}
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
 	// Delete the resources we created
 	err = os.Remove(temp_file.Name())
@@ -581,10 +640,10 @@ func (f *File) UploadFile() (err error) {
 var _ = fs.NodeCreater(&Dir{})
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
+	var new_file string
 	logrus.Infof("Create %v %s", req.Name, d.path)
 	//logrus.Infof("Create Context %v", ctx)
 	//logrus.Infof("Create Flags %s", req.Flags.String())
-
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
@@ -606,11 +665,20 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		f.swap = true
 	} else {
 		if d.path == "/" {
-			d.CreateFile(req.Name)
+			new_file = req.Name
 			//} else if strings.HasSuffix(f.name, ".swp") {
 			//	return f, f, nil
 		} else {
-			d.CreateFile(d.path + "/" + req.Name)
+			new_file = d.path + "/" + req.Name
+		}
+		err := d.CreateFile(new_file)
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+				//Probably the token expired, try again
+				logrus.Infof("Token expired, generating a new one")
+				d.fs.token, err = GetTokenAccess()
+				d.CreateFile(new_file)
+			}
 		}
 	}
 	return f, f, nil
@@ -680,7 +748,16 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	isBackupFile, _ := regexp.MatchString(`^.+?~$`, f.name)
 	is4913, _ := regexp.MatchString(`^4913$`, f.name)
 	if isSwapFile == false && isBackupFile == false && is4913 == false {
-		f.UploadFile()
+		err := f.UploadFile()
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+				//Probably the token expired, try again
+				logrus.Infof("Token expired, generating a new one")
+				f.fs.token, err = GetTokenAccess()
+				f.UploadFile()
+			}
+		}
+
 	} else {
 	}
 	//logrus.Infof("Invalidate cache %s", cache_key)
@@ -706,14 +783,24 @@ var _ = fs.NodeMkdirer(&Dir{})
 
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	//logrus.Infof("Mkdir %v %v", req.Name, d.path)
+	var new_dir string
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
 	}
 	if d.path == "/" || d.path == "" {
-		d.CreateDir(req.Name)
+		new_dir = req.Name
 	} else {
-		d.CreateDir(d.path + "/" + req.Name)
+		new_dir = d.path + "/" + req.Name
+	}
+	err := d.CreateDir(new_dir)
+	if err != nil {
+		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+			//Probably the token expired, try again
+			logrus.Infof("Token expired, generating a new one")
+			d.fs.token, err = GetTokenAccess()
+			d.CreateDir(new_dir)
+		}
 	}
 	n := &Dir{
 		fs:   d.fs,
@@ -737,7 +824,15 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		is4913, _ := regexp.MatchString(`^4913$`, req.Name)
 		if isSwapFile == false && isBackupFile == false && is4913 == false {
 			//logrus.Infof("Remove Normal File %s", req.Name)
-			d.RemoveFile(req.Name)
+			err := d.RemoveFile(req.Name)
+			if err != nil {
+				if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+					//Probably the token expired, try again
+					logrus.Infof("Token expired, generating a new one")
+					d.fs.token, err = GetTokenAccess()
+					d.RemoveFile(req.Name)
+				}
+			}
 		} else {
 			//logrus.Infof("Remove Swap File %s", req.Name)
 			//go d.RemoveFile(req.Name)

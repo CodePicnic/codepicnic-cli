@@ -336,6 +336,10 @@ func BgMountConsole(console_id string, mountbase string) {
 		}
 		if strings.HasPrefix(mountbase, "/") {
 			mountpoint = mountbase + "/" + mountlink
+		} else if mountbase == "" {
+			pwd, _ := os.Getwd()
+			mountpoint = pwd + "/" + mountlink
+
 		} else {
 			pwd, _ := os.Getwd()
 			mountpoint = pwd + "/" + mountbase + "/" + mountlink

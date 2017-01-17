@@ -128,7 +128,8 @@ func Repl(c *cli.Context) {
 		input = TrimColor(input)
 		inputArgs := strings.Fields(input)
 		if len(inputArgs) == 0 {
-			fmt.Println(color("Command not recognized. Have you tried 'help'?", "response"))
+			//fmt.Println(color("Command not recognized. Have you tried 'help'?", "response"))
+			//fmt.Println(color("", "response"))
 		} else {
 			command := inputArgs[0]
 			switch command {
@@ -169,8 +170,8 @@ func Repl(c *cli.Context) {
 					input, _ := reader_unmount.ReadString('\n')
 					input_unmount = TrimColor(input)
 					if input_unmount == "yes" || input_unmount == "" {
-						mountbase = GetMountFromPrompt()
 						CmdUnmountConsole(console_id)
+						mountbase = GetMountFromPrompt()
 						BgMountConsole(console_id, mountbase)
 					}
 				}
@@ -204,6 +205,7 @@ func Repl(c *cli.Context) {
 					mountbase = inputArgs[2]
 				} else {
 					console_id = inputArgs[1]
+					mountbase = GetMountFromPrompt()
 				}
 				//check if console is already mounted
 				mountstat := GetMountsFromFile(console_id)
@@ -216,8 +218,8 @@ func Repl(c *cli.Context) {
 					input, _ := reader_unmount.ReadString('\n')
 					input_unmount = TrimColor(input)
 					if input_unmount == "yes" || input_unmount == "" {
-						mountbase = GetMountFromPrompt()
 						CmdUnmountConsole(console_id)
+						mountbase = GetMountFromPrompt()
 						BgMountConsole(console_id, mountbase)
 					}
 				}
