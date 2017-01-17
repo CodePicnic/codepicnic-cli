@@ -660,10 +660,10 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		d.mimemap = make(map[string]string)
 	}
 	d.mimemap[f.name] = "inode/x-empty"
-	if strings.Contains(req.Flags.String(), "OpenExclusive") {
-		//logrus.Infof("File %s Exclusive", req.Name)
-		f.swap = true
-	} else {
+	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.?$`, f.name)
+	isBackupFile, _ := regexp.MatchString(`^.+?~$`, f.name)
+	is4913, _ := regexp.MatchString(`^4913$`, f.name)
+	if isSwapFile == false && isBackupFile == false && is4913 == false {
 		if d.path == "/" {
 			new_file = req.Name
 			//} else if strings.HasSuffix(f.name, ".swp") {
@@ -680,6 +680,9 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 				d.CreateFile(new_file)
 			}
 		}
+	} else {
+		logrus.Infof("File %s Exclusive", req.Name)
+		f.swap = true
 	}
 	return f, f, nil
 }
