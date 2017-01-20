@@ -740,7 +740,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.data = append([]byte(nil), req.Data[:newLen]...)
 	}
 
-	n := copy(f.data[req.Offset:], req.Data)
+	_ := copy(f.data[req.Offset:], req.Data)
 	//logrus.Infof("Write f.Data after write  %s", string(f.data))
 	//logrus.Infof("Write n  %v", n)
 	//resp.Size = n
