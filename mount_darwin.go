@@ -309,14 +309,14 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	if d.path != "" {
 		path = d.path + "/" + path
 	}
-	cache_key := d.fs.container + ":" + d.path 
+	cache_key := d.fs.container + ":" + d.path
 	_, found := cp_cache.Get(cache_key)
 	if found {
-	   //logrus.Infof("Lookup Cache Found %s", cache_key)
+		//logrus.Infof("Lookup Cache Found %s", cache_key)
 	} else {
-		   //logrus.Infof("Lookup Cache Not Found %s", cache_key)
-		   d.ReadDirAll(ctx)
-		} 
+		//logrus.Infof("Lookup Cache Not Found %s", cache_key)
+		d.ReadDirAll(ctx)
+	}
 	if d.mimemap[path] != "" {
 		switch {
 		case d.mimemap[path] == "inode/directory":
@@ -330,15 +330,14 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			//logrus.Infof("Lookup d dir = %v", d)
 			return child, nil
 		default:
-			//Debug("Lookup FILE", path)
-			logrus.Infof("Lookup Case FILE path = %s", path)
+			//logrus.Infof("Lookup Case FILE path = %s", path)
 			child := &File{
 				size:       d.sizemap[path],
 				name:       req.Name,
 				path:       path,
 				mime:       d.mimemap[path],
 				basedir:    d.path,
-                                readlock:   false,
+				readlock:   false,
 				fs:         d.fs,
 				dir:        d,
 				mountpoint: d.mountpoint,
@@ -347,7 +346,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			return child, nil
 			//}
 		}
-	    }
+	}
 	return nil, fuse.ENOENT
 }
 
@@ -467,6 +466,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	//logrus.Infof("Open Req %v", req)
 	//logrus.Infof("Open Context %v", ctx)
 	//logrus.Infof("Open Attr %v", f.Attr)
+	//OpenDirectIO instead of OpenKeepCache in osxfuse
 	resp.Flags |= fuse.OpenDirectIO
 	//resp.Flags |= fuse.OpenKeepCache
 	//logrus.Infof("Open Resp %v", resp)
@@ -486,29 +486,28 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	logrus.Infof("Read %s", string(f.data))
 	var err error
 	var t string
-		cache_key := "file:" + f.fs.container + ":" + f.path + ":" + f.name
-	if f.readlock == false { 
+	cache_key := "file:" + f.fs.container + ":" + f.path + ":" + f.name
+	if f.readlock == false {
 		t, err = f.ReadFile()
 		cp_cache.Set(cache_key, t, cache.DefaultExpiration)
 		f.readlock = true
 		if err != nil {
-		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-			//Probably the token expired, try again
-			logrus.Infof("Token expired, generating a new one")
-			f.fs.token, err = GetTokenAccess()
-			t, err = f.ReadFile()
-		}
+			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+				//Probably the token expired, try again
+				//logrus.Infof("Token expired, generating a new one")
+				f.fs.token, err = GetTokenAccess()
+				t, err = f.ReadFile()
+			}
 		}
 	} else {
 		ReadFileCache, found := cp_cache.Get(cache_key)
 		if found {
 			t = ReadFileCache.(string)
-		} 
+		}
 		fuseutil.HandleRead(req, resp, []byte(t))
 		return nil
 	}
-	 
-	
+
 	fuseutil.HandleRead(req, resp, []byte(t))
 	return nil
 }
@@ -538,7 +537,7 @@ func (d *Dir) CreateDir(newdir string) (err error) {
 }
 
 func (d *Dir) CreateFile(newfile string) (err error) {
-	logrus.Infof("CreateFile %s", newfile)
+	//logrus.Infof("CreateFile %s", newfile)
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/create_file"
 	cp_payload := ` { "path": "` + newfile + `" }`
 	var jsonStr = []byte(cp_payload)
@@ -662,12 +661,12 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		path = d.path + "/" + path
 	}
 	f := &File{
-		name:    req.Name,
-		path:    path,
-		writers: 0,
-		fs:      d.fs,
-		dir:     d,
-		basedir: d.path,
+		name:     req.Name,
+		path:     path,
+		writers:  0,
+		fs:       d.fs,
+		dir:      d,
+		basedir:  d.path,
 		readlock: false,
 	}
 	if d.mimemap == nil {
@@ -709,11 +708,11 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	f.writers = 1
 	logrus.Infof("Write %s", f.name)
 	logrus.Infof("Write req.Data  %s", string(req.Data))
-	logrus.Infof("Write req.Flags  %v", req)
+	//logrus.Infof("Write req.Flags  %v", req)
 	logrus.Infof("Write f.Data  %s", string(f.data))
-	logrus.Infof("Write len req.Data  %v", int64(len(req.Data)))
-	logrus.Infof("Write req.Offset  %v", req.Offset)
-	
+	//logrus.Infof("Write len req.Data  %v", int64(len(req.Data)))
+	//logrus.Infof("Write req.Offset  %v", req.Offset)
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -728,13 +727,13 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
 	}*/
 	//use file size is better than len(f.data)
-	logrus.Infof("Write newLen = %v vs int(f.size) = %v ", newLen, int(f.size))
+	//logrus.Infof("Write newLen = %v vs int(f.size) = %v ", newLen, int(f.size))
 	//if newLen := int(newLen); newLen > int(f.size) {
 	if newLen := int(newLen); newLen > len(f.data) {
 		//f.data = append(f.data, make([]byte, newLen-int(f.size))...)
 		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
-		logrus.Infof("Write f.Data after append  %s", string(f.data))
-	//} else if newLen < int(f.size) {
+		//logrus.Infof("Write f.Data after append  %s", string(f.data))
+		//} else if newLen < int(f.size) {
 	} else if newLen < len(f.data) {
 		//if newLen is < f.size we need to shrink the slice
 		//f.data = append([]byte(nil), f.data[:newLen]...)
@@ -742,8 +741,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	n := copy(f.data[req.Offset:], req.Data)
-	logrus.Infof("Write f.Data after write  %s", string(f.data))
-	logrus.Infof("Write n  %v", n)
+	//logrus.Infof("Write f.Data after write  %s", string(f.data))
+	//logrus.Infof("Write n  %v", n)
 	//resp.Size = n
 	//f.size = uint64(n)
 	resp.Size = len(req.Data)
@@ -754,10 +753,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 var _ = fs.HandleFlusher(&File{})
 
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
-	//Debug("Flush", f.name, strconv.Itoa(req.Flags))
-	logrus.Infof("Flush %v %v", f.name, f.writers)
+	//logrus.Infof("Flush %v %v", f.name, f.writers)
 	//logrus.Infof("Flush Flags %v", req.Flags)
-	//Debug("Flush Writers", strconv.Itoa(int(f.writers)))
 
 	if f.writers == 0 {
 		// Read-only handles also get flushes. Make sure we don't
@@ -775,17 +772,20 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 		if err != nil {
 			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
 				//Probably the token expired, try again
-				logrus.Infof("Token expired, generating a new one")
+				//logrus.Infof("Token expired, generating a new one")
 				f.fs.token, err = GetTokenAccess()
 				f.UploadFile()
 			}
 		}
 
 	} else {
-	logrus.Infof("Swap File %v %v %v ", isSwapFile, isBackupFile, is4913)
+		//logrus.Infof("Swap File %v %v %v ", isSwapFile, isBackupFile, is4913)
 	}
 	//logrus.Infof("Invalidate cache %s", cache_key)
+	//Invalidate cache and unlock ReadFile after a Write Flush
 	f.readlock = false
+	cache_key := "file:" + f.fs.container + ":" + f.path + ":" + f.name
+	cp_cache.Delete(cache_key)
 	return nil
 }
 
@@ -793,8 +793,8 @@ var _ = fs.HandleReleaser(&File{})
 
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	//logrus.Infof("Release %v", f.name)
-	logrus.Infof("Release %v %v", f.name, f.writers)
-	logrus.Infof("Release Req %v", req)
+	//logrus.Infof("Release %v %v", f.name, f.writers)
+	//logrus.Infof("Release Req %v", req)
 	if req.Flags.IsReadOnly() {
 		// we don't need to track read-only handles
 		//	return nil
@@ -907,5 +907,5 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 			f.data = f.data[:newLen]
 		}
 	}
-	return nil 
+	return nil
 }
