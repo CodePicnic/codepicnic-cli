@@ -66,6 +66,7 @@ type File struct {
 	mu         sync.Mutex
 	data       []byte
 	writers    uint
+	readlock   bool
 	fs         *FS
 	size       uint64
 	dir        *Dir
@@ -308,15 +309,14 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	if d.path != "" {
 		path = d.path + "/" + path
 	}
-	//gnome tried to mount some files like autorun.info , as they not have mimetype should not be created
-	//Debug("Lookup PATH", path, d.mimemap[path])
-	//Debug("Lookup NAME", path, d.mimemap[req.Name])
-	//if strings.HasSuffix(req.Name, ".aaaswp") {
-	//	fmt.Printf("Lookup NOENT %v \n", path)
-	//	return nil, fuse.ENOENT
-	//}
-	//if we are not doing a lookup on root
-	//if d.mimemap[path] != "" {
+	cache_key := d.fs.container + ":" + d.path 
+	_, found := cp_cache.Get(cache_key)
+	if found {
+	   //logrus.Infof("Lookup Cache Found %s", cache_key)
+	} else {
+		   //logrus.Infof("Lookup Cache Not Found %s", cache_key)
+		   d.ReadDirAll(ctx)
+		} 
 	if d.mimemap[path] != "" {
 		switch {
 		case d.mimemap[path] == "inode/directory":
@@ -331,12 +331,14 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			return child, nil
 		default:
 			//Debug("Lookup FILE", path)
+			logrus.Infof("Lookup Case FILE path = %s", path)
 			child := &File{
 				size:       d.sizemap[path],
 				name:       req.Name,
 				path:       path,
 				mime:       d.mimemap[path],
 				basedir:    d.path,
+                                readlock:   false,
 				fs:         d.fs,
 				dir:        d,
 				mountpoint: d.mountpoint,
@@ -345,8 +347,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			return child, nil
 			//}
 		}
-	}
-	//logrus.Infof("Lookup d = %v", d)
+	    }
 	return nil, fuse.ENOENT
 }
 
@@ -466,14 +467,8 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	//logrus.Infof("Open Req %v", req)
 	//logrus.Infof("Open Context %v", ctx)
 	//logrus.Infof("Open Attr %v", f.Attr)
-	/*
-		if strings.HasSuffix(f.name, ".swp") {
-			fmt.Printf("Open SWP %v\n", f.name)
-			resp.Flags |= fuse.OpenDirectIO
-		} else {
-			resp.Flags |= fuse.OpenKeepCache
-		}*/
-	resp.Flags |= fuse.OpenKeepCache
+	resp.Flags |= fuse.OpenDirectIO
+	//resp.Flags |= fuse.OpenKeepCache
 	//logrus.Infof("Open Resp %v", resp)
 	//logrus.Infof("Open f %v", f)
 	//f.writers++
@@ -487,15 +482,33 @@ var _ fs.HandleReader = (*File)(nil)
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	//t := f.content.Load().(string)
-	t, err := f.ReadFile()
-	if err != nil {
+	logrus.Infof("Read %s", f.name)
+	logrus.Infof("Read %s", string(f.data))
+	var err error
+	var t string
+		cache_key := "file:" + f.fs.container + ":" + f.path + ":" + f.name
+	if f.readlock == false { 
+		t, err = f.ReadFile()
+		cp_cache.Set(cache_key, t, cache.DefaultExpiration)
+		f.readlock = true
+		if err != nil {
 		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
 			//Probably the token expired, try again
 			logrus.Infof("Token expired, generating a new one")
 			f.fs.token, err = GetTokenAccess()
 			t, err = f.ReadFile()
 		}
+		}
+	} else {
+		ReadFileCache, found := cp_cache.Get(cache_key)
+		if found {
+			t = ReadFileCache.(string)
+		} 
+		fuseutil.HandleRead(req, resp, []byte(t))
+		return nil
 	}
+	 
+	
 	fuseutil.HandleRead(req, resp, []byte(t))
 	return nil
 }
@@ -655,6 +668,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		fs:      d.fs,
 		dir:     d,
 		basedir: d.path,
+		readlock: false,
 	}
 	if d.mimemap == nil {
 		d.mimemap = make(map[string]string)
@@ -695,6 +709,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	f.writers = 1
 	logrus.Infof("Write %s", f.name)
 	logrus.Infof("Write req.Data  %s", string(req.Data))
+	logrus.Infof("Write req.Flags  %v", req)
 	logrus.Infof("Write f.Data  %s", string(f.data))
 	logrus.Infof("Write len req.Data  %v", int64(len(req.Data)))
 	logrus.Infof("Write req.Offset  %v", req.Offset)
@@ -770,6 +785,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	logrus.Infof("Swap File %v %v %v ", isSwapFile, isBackupFile, is4913)
 	}
 	//logrus.Infof("Invalidate cache %s", cache_key)
+	f.readlock = false
 	return nil
 }
 
@@ -778,6 +794,7 @@ var _ = fs.HandleReleaser(&File{})
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	//logrus.Infof("Release %v", f.name)
 	logrus.Infof("Release %v %v", f.name, f.writers)
+	logrus.Infof("Release Req %v", req)
 	if req.Flags.IsReadOnly() {
 		// we don't need to track read-only handles
 		//	return nil
@@ -863,10 +880,32 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 	return nil
 }
 
-//var _ = fs.NodeGetattrer(&File{})
+var _ = fs.NodeGetattrer(&File{})
 
-func (f *File) GetAttr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
+func (f *File) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
 	//logrus.Infof("GetAttr %v", req)
 	//logrus.Infof("GetAttr Attr %v", f.Attr)
 	return f.Attr(ctx, &resp.Attr)
+}
+
+var _ = fs.NodeSetattrer(&File{})
+
+func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	//logrus.Infof("SetAttr %v", req)
+	if req.Valid.Size() {
+		if req.Size > uint64(maxInt) {
+			return fuse.Errno(syscall.EFBIG)
+		}
+		newLen := int(req.Size)
+		//logrus.Infof("SetAttr newLen %v", newLen)
+		switch {
+		case newLen > len(f.data):
+			f.data = append(f.data, make([]byte, newLen-len(f.data))...)
+		case newLen < len(f.data):
+			f.data = f.data[:newLen]
+		}
+	}
+	return nil 
 }
