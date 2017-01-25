@@ -17,14 +17,16 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"strconv"
+	//"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
 
-var cp_cache = cache.New(5*time.Minute, 30*time.Second)
+var cp_cache = cache.New(60*time.Minute, 30*time.Second)
+var mount_uid = uint32(1000)
+var mount_gid = uint32(1000)
 
 type FS struct {
 	fuse       *fs.Server
@@ -70,12 +72,15 @@ type File struct {
 	size       uint64
 	dir        *Dir
 	swap       bool
+	openlock   bool
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	//fmt.Printf("Dir Attr %s \n", d.path)
 	//Debug("Dir Attr", d.path)
 	a.Mode = os.ModeDir | 0777
+	a.Uid = mount_uid
+	a.Gid = mount_gid
 	return nil
 }
 
@@ -292,6 +297,14 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	return err
 }
 
+//var _ = fs.NodeForgetter(&File{})
+
+func (f *File) Forget(ctx context.Context, req *fuse.ForgetRequest) error {
+
+	logrus.Infof("Forget f.name = %s", f.name)
+	return nil
+}
+
 var _ = fs.NodeRequestLookuper(&Dir{})
 
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
@@ -423,6 +436,8 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	}
 	//a.Size = uint64(len(f.data))
 	a.Size = f.size
+	a.Uid = mount_uid
+	a.Gid = mount_gid
 	/*
 		t, _ := f.ReadFile()
 		f.content = []byte(t)
@@ -462,7 +477,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	//if !req.Flags.IsReadOnly() {
 	//	return nil, fuse.Errno(syscall.EACCES)
 	//}
-	logrus.Infof("Open %s", f.name)
+	//logrus.Infof("Open %s", f.name)
 	//logrus.Infof("Open Req %v", req)
 	//logrus.Infof("Open Context %v", ctx)
 	//logrus.Infof("Open Attr %v", f.Attr)
@@ -477,6 +492,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	//logrus.Infof("Open Resp %v", resp)
 	//logrus.Infof("Open f %v", f)
 	//f.writers++
+	f.openlock = true
 	return f, nil
 	//return &FileHandle{path: f.path}, nil
 }
@@ -525,7 +541,7 @@ func (d *Dir) CreateDir(newdir string) (err error) {
 }
 
 func (d *Dir) CreateFile(newfile string) (err error) {
-	logrus.Infof("CreateFile %s", newfile)
+	//logrus.Infof("CreateFile %s", newfile)
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/create_file"
 	cp_payload := ` { "path": "` + newfile + `" }`
 	var jsonStr = []byte(cp_payload)
@@ -549,10 +565,10 @@ func (d *Dir) CreateFile(newfile string) (err error) {
 	return nil
 }
 
-func (d *Dir) RemoveFile(file string) (err error) {
+func (d *Dir) RemoveVimFile(file string, ch chan error) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
-	logrus.Infof("Remove file %s", d.path+" / "+file)
+	//logrus.Infof("Remove file %s", d.path+" / "+file)
 	if d.path == "" {
 		cp_payload = ` { "commands": "rm ` + file + `" }`
 	} else {
@@ -568,12 +584,45 @@ func (d *Dir) RemoveFile(file string) (err error) {
 	resp, err := client.Do(req)
 	defer resp.Body.Close()
 	if err != nil {
-		//logrus.Errorf("RemoveFile %v", err)
+		logrus.Errorf("RemoveFile %v", err)
+		ch <- err
+		return err
+	}
+	if resp.StatusCode == 401 {
+		ch <- errors.New(ERROR_NOT_AUTHORIZED)
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	//logrus.Infof("Remove file End %s", d.path+" / "+file)
+	ch <- err
+	return nil
+}
+
+func (d *Dir) RemoveFile(file string) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
+	var cp_payload string
+	//logrus.Infof("Remove file %s", d.path+" / "+file)
+	if d.path == "" {
+		cp_payload = ` { "commands": "rm ` + file + `" }`
+	} else {
+		cp_payload = ` { "commands": "rm ` + d.path + "/" + file + `" }`
+	}
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if err != nil {
+		logrus.Errorf("RemoveFile %v", err)
 		return err
 	}
 	if resp.StatusCode == 401 {
 		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
+	logrus.Infof("Remove file End %s", d.path+" / "+file)
 	return nil
 }
 
@@ -641,8 +690,8 @@ var _ = fs.NodeCreater(&Dir{})
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	var new_file string
-	logrus.Infof("Create %v %s", req.Name, d.path)
-	//logrus.Infof("Create Context %v", ctx)
+	//logrus.Infof("Create %v %s", req.Name, d.path)
+	//logrus.Infof("Create Request %+v", req)
 	//logrus.Infof("Create Flags %s", req.Flags.String())
 	path := req.Name
 	if d.path != "" {
@@ -675,7 +724,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		if err != nil {
 			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
 				//Probably the token expired, try again
-				logrus.Infof("Token expired, generating a new one")
+				//logrus.Infof("Token expired, generating a new one")
 				d.fs.token, err = GetTokenAccess()
 				d.CreateFile(new_file)
 			}
@@ -690,7 +739,7 @@ var _ = fs.HandleWriter(&File{})
 
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	f.writers = 1
-	logrus.Infof("Write %s", f.name)
+	//logrus.Infof("Write %s", f.name)
 	//fmt.Printf("Req Data %v \n", req.Data)
 	//fmt.Printf("Req Len %v \n", int64(len(req.Data)))
 	//fmt.Printf("Req Offset %v \n", req.Offset)
@@ -715,8 +764,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.data = append(f.data, make([]byte, newLen-int(f.size))...)
 	} else if newLen < int(f.size) {
 		//if newLen is < f.size we need to shrink the slice
-		fmt.Printf("Req NewLen %v \n", newLen)
-		fmt.Printf("f.data %v \n", f.data)
+		//fmt.Printf("Req NewLen %v \n", newLen)
+		//fmt.Printf("f.data %v \n", f.data)
 		//f.data = append([]byte(nil), f.data[:newLen]...)
 		f.data = append([]byte(nil), req.Data[:newLen]...)
 	}
@@ -732,7 +781,7 @@ var _ = fs.HandleFlusher(&File{})
 
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	//Debug("Flush", f.name, strconv.Itoa(req.Flags))
-	logrus.Infof("Flush %v %v", f.name, f.writers)
+	//logrus.Infof("Flush %v %v", f.name, f.writers)
 	//logrus.Infof("Flush Flags %v", req.Flags)
 	//Debug("Flush Writers", strconv.Itoa(int(f.writers)))
 
@@ -744,15 +793,13 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	}
 
 	//logrus.Infof("Flush Write")
-	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.?$`, f.name)
-	isBackupFile, _ := regexp.MatchString(`^.+?~$`, f.name)
-	is4913, _ := regexp.MatchString(`^4913$`, f.name)
-	if isSwapFile == false && isBackupFile == false && is4913 == false {
+	//if isSwapFile == false && isBackupFile == false && is4913 == false {
+	if IsVimFile(f.name) == false {
 		err := f.UploadFile()
 		if err != nil {
 			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
 				//Probably the token expired, try again
-				logrus.Infof("Token expired, generating a new one")
+				//logrus.Infof("Token expired, generating a new one")
 				f.fs.token, err = GetTokenAccess()
 				f.UploadFile()
 			}
@@ -768,7 +815,7 @@ var _ = fs.HandleReleaser(&File{})
 
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	//logrus.Infof("Release %v", f.name)
-	logrus.Infof("Release %v %v", f.name, f.writers)
+	//logrus.Infof("Release %v %v", f.name, f.writers)
 	if req.Flags.IsReadOnly() {
 		// we don't need to track read-only handles
 		//	return nil
@@ -797,7 +844,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	if err != nil {
 		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
 			//Probably the token expired, try again
-			logrus.Infof("Token expired, generating a new one")
+			//logrus.Infof("Token expired, generating a new one")
 			d.fs.token, err = GetTokenAccess()
 			d.CreateDir(new_dir)
 		}
@@ -809,36 +856,63 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	return n, nil
 }
 
+func RemoveFileFromCache(FileCollection []File, pos int) []File {
+	FileCollection[len(FileCollection)-1], FileCollection[pos] = FileCollection[pos], FileCollection[len(FileCollection)-1]
+	return FileCollection[:len(FileCollection)-1]
+}
+
+func IsVimFile(file string) bool {
+	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.+$`, file)
+	isBackupFile, _ := regexp.MatchString(`^.+?~$`, file)
+	is4913, _ := regexp.MatchString(`^4913$`, file)
+	if isSwapFile == false && isBackupFile == false && is4913 == false {
+		return false
+	} else {
+		return true
+	}
+
+}
+
 var _ = fs.NodeRemover(&Dir{})
 
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
-	logrus.Infof("Remove %v %v", req.Name, strconv.FormatBool(req.Dir))
+	//logrus.Infof("Remove %v %v", req.Name, strconv.FormatBool(req.Dir))
+	//logrus.Infof("Remove %+v", req)
+	ch := make(chan error)
 	switch req.Dir {
 	case true:
 		return fuse.ENOENT
 
 	case false:
-		isSwapFile, _ := regexp.MatchString(`^.+?\.sw.?$`, req.Name)
-		isBackupFile, _ := regexp.MatchString(`^.+?~$`, req.Name)
-		is4913, _ := regexp.MatchString(`^4913$`, req.Name)
-		if isSwapFile == false && isBackupFile == false && is4913 == false {
-			//logrus.Infof("Remove Normal File %s", req.Name)
-			err := d.RemoveFile(req.Name)
-			if err != nil {
-				if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-					//Probably the token expired, try again
-					logrus.Infof("Token expired, generating a new one")
-					d.fs.token, err = GetTokenAccess()
-					d.RemoveFile(req.Name)
-				}
-			}
+		if IsVimFile(req.Name) {
+			//logrus.Infof("Remove Vim File %s", req.Name)
+			go d.RemoveVimFile(req.Name, ch)
 		} else {
-			//logrus.Infof("Remove Swap File %s", req.Name)
-			//go d.RemoveFile(req.Name)
+			//logrus.Infof("Remove Normal File %s", req.Name)
+			d.RemoveFile(req.Name)
 		}
 		cache_key := d.fs.container + ":" + d.path
-		cp_cache.Delete(cache_key)
+		//logrus.Infof("Remove Check cache %s", cache_key)
+		cache_data, found := cp_cache.Get(cache_key)
+		if found {
+			//logrus.Infof("Remove Cache Found %+v", cache_data)
+			FileCollection := cache_data.([]File)
+			pos := 0
+			for _, cache_file := range cache_data.([]File) {
+				if cache_file.name == req.Name {
+					//logrus.Infof("Remove Cache File %s %v", cache_file.name, pos)
+					FileCollection = RemoveFileFromCache(cache_data.([]File), pos)
+					break
+				}
+				pos++
+			}
+			//logrus.Infof("Remove New cache FileCollection %v", FileCollection)
+			cp_cache.Set(cache_key, FileCollection, cache.DefaultExpiration)
+		} else {
+			//logrus.Infof("Remove Cache Not Found")
+			cp_cache.Delete(cache_key)
+		}
 		delete(d.mimemap, req.Name)
 		delete(d.sizemap, req.Name)
 		return nil
@@ -861,3 +935,10 @@ func (f *File) GetAttr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse
 	//logrus.Infof("GetAttr Attr %v", f.Attr)
 	return f.Attr(ctx, &resp.Attr)
 }
+
+//var _ fs.NodeRenamer = (*Dir)(nil)
+
+//func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
+//	logrus.Infof("Rename %+v", req)
+//	return nil
+//}

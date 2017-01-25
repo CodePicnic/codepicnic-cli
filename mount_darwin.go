@@ -561,6 +561,38 @@ func (d *Dir) CreateFile(newfile string) (err error) {
 	return nil
 }
 
+func (d *Dir) RemoveVimFile(file string, ch chan error) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
+	var cp_payload string
+	//logrus.Infof("Remove file %s", d.path+" / "+file)
+	if d.path == "" {
+		cp_payload = ` { "commands": "rm ` + file + `" }`
+	} else {
+		cp_payload = ` { "commands": "rm ` + d.path + "/" + file + `" }`
+	}
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if err != nil {
+		logrus.Errorf("RemoveFile %v", err)
+		ch <- err
+		return err
+	}
+	if resp.StatusCode == 401 {
+		ch <- errors.New(ERROR_NOT_AUTHORIZED)
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	//logrus.Infof("Remove file End %s", d.path+" / "+file)
+	ch <- err
+	return nil
+}
+
 func (d *Dir) RemoveFile(file string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
@@ -835,6 +867,18 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	return n, nil
 }
 
+func IsVimFile(file string) bool {
+	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.+$`, file)
+	isBackupFile, _ := regexp.MatchString(`^.+?~$`, file)
+	is4913, _ := regexp.MatchString(`^4913$`, file)
+	if isSwapFile == false && isBackupFile == false && is4913 == false {
+		return false
+	} else {
+		return true
+	}
+
+}
+
 var _ = fs.NodeRemover(&Dir{})
 
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
@@ -909,3 +953,17 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	}
 	return nil
 }
+
+//var _ = fs.NodeGetattrer(&File{})
+
+func (f *File) GetAttr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
+	//logrus.Infof("GetAttr %v", req)
+	//logrus.Infof("GetAttr Attr %v", f.Attr)
+	return f.Attr(ctx, &resp.Attr)
+}
+
+//var _ fs.NodeRenamer = (*Dir)(nil)
+
+//func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
+//  logrus.Infof("Rename %+v", req)
+//  return nil
