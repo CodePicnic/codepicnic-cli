@@ -306,6 +306,10 @@ func Repl(c *cli.Context) {
 				}
 				src_container, src_path = splitContainerFromPath(copy_src)
 				dst_container, dst_path = splitContainerFromPath(copy_dst)
+				if dst_path == "." {
+					dst_path = src_path
+				}
+
 				if src_container != "" {
 					CmdDownloadFromConsole(src_container, src_path, dst_path)
 				}
