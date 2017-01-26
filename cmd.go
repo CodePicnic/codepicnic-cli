@@ -443,7 +443,16 @@ func CmdCreateConsole(console ConsoleExtra) error {
 		fmt.Printf(color("There was an error creating the console. Please verify if you choose the right type.\n", "error"))
 	} else {
 		fmt.Printf(color(" Done. * %s \n", "response"), container_name)
-		fmt.Printf(color("%s \n", "response"), console_url)
+		fmt.Printf(color("Console URL: %s \n", "response"), console_url)
+		stack, _ := GetStackInfo(access_token, console.Type)
+
+		if (StackJson{}) == stack {
+		} else {
+			if stack.Group == "framework" {
+				fmt.Printf(color("%s URL: %s \n", "response"), stack.ShortName, "https://"+container_name+"-"+stack.Identifier+".codepicnic.com")
+			}
+
+		}
 	}
 	return nil
 }

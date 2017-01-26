@@ -1,3 +1,9 @@
+codepicnic (0.98) unstable; urgency=low
+
+  * Added external URL after creating a console 
+
+ -- CodePicnic <info@codepicnic.com>  Thu, 26 Jan 2017 18:50:00 +0000
+
 codepicnic (0.97) unstable; urgency=low
 
   * Fix changelog file

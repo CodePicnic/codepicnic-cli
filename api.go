@@ -391,6 +391,17 @@ func ListStacks(access_token string) ([]StackJson, error) {
 	return stack_collection.Stacks, nil
 }
 
+func GetStackInfo(access_token string, mystack string) (StackJson, error) {
+	var stack StackJson
+	stacks_list, _ := ListStacks(access_token)
+	for _, stack := range stacks_list {
+		if stack.Identifier == mystack {
+			return stack, nil
+		}
+	}
+	return stack, nil
+}
+
 func CreateConsole(access_token string, console_extra ConsoleExtra) (string, string, error) {
 
 	cp_consoles_url := site + "/api/consoles"
