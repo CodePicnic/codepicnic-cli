@@ -148,9 +148,14 @@ func UnmountConsole(container_name string) error {
 		err := fuse.Unmount(mountpoint)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "exit status 1: fusermount: entry for") {
-				fmt.Printf("A mount point for container %s doesn't exist\n", container_name)
+				//if a mount point exists in the config but not in the OS.
+				//fmt.Printf("A mount point for container %s doesn't exist\n", container_name)
+				fmt.Printf(color("Console %s succesfully cleaned\n", "response"), container_name)
+				SaveMountsToFile(container_name, "")
+			} else if strings.HasSuffix(err.Error(), "Device or resource busy") {
+				fmt.Printf(color("Can't unmount. Mount point for console %s is busy.\n", "error"), container_name)
 			} else {
-				fmt.Printf("Error when unmounting %s %s", container_name, err.Error())
+				fmt.Printf("Error when unmounting %s %s\n", container_name, err.Error())
 			}
 			return err
 		} else {
@@ -158,12 +163,13 @@ func UnmountConsole(container_name string) error {
 			if err != nil {
 				fmt.Println("Error removing dir", err)
 			}
-			fmt.Printf(color("Container %s succesfully unmounted\n", "response"), container_name)
+			fmt.Printf(color("Console %s succesfully unmounted\n", "response"), container_name)
 			SaveMountsToFile(container_name, "")
 		}
 	}
 	return nil
 }
+
 func MountConsole(access_token string, container_name string, mount_dir string) error {
 	var mount_point string
 	var mountlink string

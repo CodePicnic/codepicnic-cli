@@ -94,7 +94,15 @@ func GetMountsFromFile(container string) string {
 	}
 	mountpoint := cfg.Section("mounts").Key(container).String()
 	return mountpoint
-
+}
+func GetAllMountsFromFile() []string {
+	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
+	if err != nil {
+		fmt.Println(color("Error.", "error"))
+		fmt.Println(color(msg_rwperms, "error"))
+	}
+	mountpoint := cfg.Section("mounts").KeyStrings()
+	return mountpoint
 }
 
 func SaveTokenToFile(access_token string) {
@@ -321,8 +329,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "configure",
-			Usage: "save configuration",
+			Name:      "configure",
+			Usage:     "save configuration",
+			ArgsUsage: " ",
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:        "id",
@@ -345,8 +354,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "connect",
-			Usage: "connect to a console",
+			Name:      "connect",
+			Usage:     "connect to a console",
+			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				var console string
@@ -362,8 +372,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "control",
-			Usage: "connect to a console and mount it as a local filesystem",
+			Name:      "control",
+			Usage:     "connect to a console and mount it as a local filesystem",
+			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				var mountbase string
@@ -399,7 +410,7 @@ func main() {
 		{
 			Name:      "copy",
 			Usage:     "copy a file from/to a console",
-			ArgsUsage: "FILE_PATH CONSOLE_ID:[DESTINATION_FILE_PATH] or CONSOLE_ID:FILE_PATH DESTINATION_FILE_PATH",
+			ArgsUsage: "[FILE_PATH] [CONSOLE_ID]:[DESTINATION_FILE_PATH] or [CONSOLE_ID]:[FILE_PATH] [DESTINATION_FILE_PATH]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string
@@ -431,7 +442,8 @@ func main() {
 		{
 			Name: "create",
 			//Aliases: []string{"c"},
-			Usage: "create and start a new console",
+			Usage:     "create and start a new console",
+			ArgsUsage: " ",
 
 			Flags: []cli.Flag{
 				cli.StringFlag{
@@ -519,7 +531,7 @@ func main() {
 		{
 			Name:      "exec",
 			Usage:     "exec a command into console",
-			ArgsUsage: "[console_id] \"[command]\"",
+			ArgsUsage: "[CONSOLE_ID] \"[COMMAND]\"",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				var console, command string
@@ -540,8 +552,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "exit",
-			Usage: "exit the REPL",
+			Name:      "exit",
+			Usage:     "exit the REPL",
+			ArgsUsage: " ",
 			Action: func(c *cli.Context) error {
 				fmt.Println(color("Bye!", "exit"))
 				return nil
@@ -550,7 +563,8 @@ func main() {
 		{
 			Name: "list",
 			//Aliases: []string{"ls"},
-			Usage: "list consoles",
+			Usage:     "list consoles",
+			ArgsUsage: " ",
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:        "format",
@@ -568,7 +582,7 @@ func main() {
 		{
 			Name:      "mount",
 			Usage:     "mount /app filesystem from a container",
-			ArgsUsage: "CONSOLE_ID DESTINATION_DIRECTORY",
+			ArgsUsage: "[CONSOLE_ID] [DESTINATION_DIRECTORY]",
 			//Flags: []cli.Flag{
 			//	cli.BoolFlag{
 			//		Name:        "debug",
@@ -631,8 +645,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "remove",
-			Usage: "remove a console",
+			Name:      "remove",
+			Usage:     "remove a console",
+			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				CmdRemoveConsole(c.Args()[0])
@@ -640,8 +655,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "restart",
-			Usage: "restart a console",
+			Name:      "restart",
+			Usage:     "restart a console",
+			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				CmdRestartConsole(c.Args()[0])
@@ -649,8 +665,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "stacks",
-			Usage: "list stacks",
+			Name:      "stacks",
+			Usage:     "list stacks",
+			ArgsUsage: " ",
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:        "format",
@@ -666,8 +683,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "start",
-			Usage: "start a console",
+			Name:      "start",
+			Usage:     "start a console",
+			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				CmdStartConsole(c.Args()[0])
@@ -675,8 +693,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "stop",
-			Usage: "stop a console",
+			Name:      "stop",
+			Usage:     "stop a console",
+			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				CmdStopConsole(c.Args()[0])
@@ -684,8 +703,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "unmount",
-			Usage: "unmount /app filesystem from a container",
+			Name:      "unmount",
+			Usage:     "unmount /app filesystem from a container",
+			ArgsUsage: "[CONSOLE_ID]",
 			//Flags: []cli.Flag{
 			//	cli.BoolFlag{
 			//		Name:        "debug",
@@ -700,7 +720,11 @@ func main() {
 					CmdConfigure()
 					return nil
 				}*/
-				CmdUnmountConsole(c.Args()[0])
+				if c.Args()[0] == "all" {
+					CmdUnmountAllConsoles()
+				} else {
+					CmdUnmountConsole(c.Args()[0])
+				}
 				/*if err != nil {
 					fmt.Println("Error: ", err)
 					panic(err)

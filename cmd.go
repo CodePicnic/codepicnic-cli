@@ -287,6 +287,16 @@ func CmdUnmountConsole(console string) error {
 	UnmountConsole(console)
 	return nil
 }
+func CmdUnmountAllConsoles() error {
+	mounted_consoles := GetAllMountsFromFile()
+	for _, console := range mounted_consoles {
+		if GetMountsFromFile(console) == "" {
+		} else {
+			UnmountConsole(console)
+		}
+	}
+	return nil
+}
 
 func CmdUploadToConsole(console_id string, dst string, src string) error {
 	access_token := GetTokenAccessFromFile()

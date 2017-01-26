@@ -1,0 +1,11 @@
+codepicnic (0.96) stable; urgency=low
+
+* Changelog file added to ubuntu/debian packages
+* Support for "unmount all"
+* Handle unmount errors
+* Improve help text 
+
+codepicnic (0.95) stable; urgency=low
+
+* Fix bugs when writing temporary files in linux 
+* Description added to ubuntu/debian packages 

@@ -237,7 +237,11 @@ func Repl(c *cli.Context) {
 				} else {
 					console_id = inputArgs[1]
 				}
-				CmdUnmountConsole(console_id)
+				if inputArgs[0] == "all" {
+					CmdUnmountAllConsoles()
+				} else {
+					CmdUnmountConsole(console_id)
+				}
 			case "stop":
 				if len(inputArgs) < 2 {
 					console_id = GetConsoleFromPrompt()
