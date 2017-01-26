@@ -3,6 +3,7 @@ package main
 
 import (
 	//"github.com/deckarep/gosx-notifier"
+	"github.com/Sirupsen/logrus"
 	"github.com/twstrike/gosx-notifier"
 )
 
