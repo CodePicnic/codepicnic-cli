@@ -5,11 +5,12 @@ codepicnic (0.96) stable; urgency=low
   * Handle unmount errors
   * Improve help text
  
- -- CodePicnic <info@codepicnic.com> Thu, 26 Jan 2017 22:25:05 +0200
+ -- CodePicnic <info@codepicnic.com> Thu, 26 Jan 2017 07:15:57 +0000
  
 codepicnic (0.95) stable; urgency=low
 
   * Fix bugs when writing temporary files in linux 
   * Description added to ubuntu/debian packages
  
- -- CodePicnic <info@codepicnic.com> Wed, 25 Jan 2017 22:25:05 +0200
+ -- CodePicnic <info@codepicnic.com> Wed, 25 Jan 2017 07:15:57 +0000
+ 
