@@ -1,0 +1,15 @@
+Source: codepicnic
+Section: unknown
+Priority: optional
+Maintainer: CodePicnic <info@codepicnic.com>
+Build-Depends: debhelper (>= 8.0.0)
+Standards-Version: 3.9.4
+Homepage: https://codepicnic.com/cli
+#Vcs-Git: git://git.debian.org/collab-maint/codepicnic.git
+#Vcs-Browser: http://git.debian.org/?p=collab-maint/codepicnic.git;a=summary
+
+Package: codepicnic
+Architecture: all
+Depends: ${misc:Depends}
+Description: A command line interface for CodePicnic's consoles 
+ The codepicnic command is the gateway to access CodePicnic's goodies on your own machine. 
