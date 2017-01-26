@@ -13,6 +13,9 @@ func NotifyDesktop() {
 	//note.ContentImage = getHomeDir() + "/" + cfg_dir + "/" + notify_file
 	//note.Sender = "com.apple.Safari"
 
-	note.Push()
+	err := note.Push()
+	if err != nil {
+		logrus.Errorf("Can't notify %v", err)
+	}
 
 }

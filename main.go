@@ -393,8 +393,9 @@ func main() {
 		},
 
 		{
-			Name:  "copy",
-			Usage: "copy a file from/to a console",
+			Name:      "copy",
+			Usage:     "copy a file from/to a console",
+			ArgsUsage: "FILE_PATH CONSOLE_ID:[DESTINATION_FILE_PATH]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string

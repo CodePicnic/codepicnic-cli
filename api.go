@@ -425,7 +425,8 @@ func DownloadFileFromConsole(token string, console_id string, src string, dst st
 	if dst == "" {
 		dst = src
 	}
-	cp_consoles_url := site + "/api/consoles/" + console_id + "/" + src
+	//cp_consoles_url := site + "/api/consoles/" + console_id + "/" + src
+	cp_consoles_url := site + "/api/consoles/" + console_id + "/read_file?path=" + src
 
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
