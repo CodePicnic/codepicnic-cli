@@ -1,11 +1,15 @@
 codepicnic (0.96) stable; urgency=low
 
-* Changelog file added to ubuntu/debian packages
-* Support for "unmount all"
-* Handle unmount errors
-* Improve help text 
-
+  * Changelog file added to ubuntu/debian packages
+  * Support for "unmount all"
+  * Handle unmount errors
+  * Improve help text
+ 
+ -- CodePicnic <info@codepicnic.com> Thu, 26 Jan 2017 22:25:05 +0200
+ 
 codepicnic (0.95) stable; urgency=low
 
-* Fix bugs when writing temporary files in linux 
-* Description added to ubuntu/debian packages 
+  * Fix bugs when writing temporary files in linux 
+  * Description added to ubuntu/debian packages
+ 
+ -- CodePicnic <info@codepicnic.com> Wed, 25 Jan 2017 22:25:05 +0200
