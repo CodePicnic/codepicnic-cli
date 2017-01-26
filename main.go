@@ -301,8 +301,11 @@ func main() {
 			fmt.Println(color("Bye!", "exit"))
 			os.Exit(0)
 		}()
-
-		Repl(c)
+		if c.NArg() == 0 {
+			Repl(c)
+		} else {
+			fmt.Println(color("Command not recognized. Have you tried 'codepicnic help'?", "response"))
+		}
 		return nil
 	}
 
@@ -310,7 +313,8 @@ func main() {
 		{
 			Name: "clear",
 			//Aliases: []string{"cls"},
-			Usage: "clear screen",
+			Usage:     "clear screen",
+			ArgsUsage: " ",
 			Action: func(c *cli.Context) error {
 				CmdClearScreen()
 				return nil
@@ -395,7 +399,7 @@ func main() {
 		{
 			Name:      "copy",
 			Usage:     "copy a file from/to a console",
-			ArgsUsage: "FILE_PATH CONSOLE_ID:[DESTINATION_FILE_PATH]",
+			ArgsUsage: "FILE_PATH CONSOLE_ID:[DESTINATION_FILE_PATH] or CONSOLE_ID:FILE_PATH DESTINATION_FILE_PATH",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
 				var copy_src, copy_dst, src_container, src_path, dst_path, dst_container string
@@ -562,8 +566,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "mount",
-			Usage: "mount /app filesystem from a container",
+			Name:      "mount",
+			Usage:     "mount /app filesystem from a container",
+			ArgsUsage: "CONSOLE_ID DESTINATION_DIRECTORY",
 			//Flags: []cli.Flag{
 			//	cli.BoolFlag{
 			//		Name:        "debug",
