@@ -442,7 +442,8 @@ func CmdCreateConsole(console ConsoleExtra) error {
 		fmt.Printf(color(" Error.\n", "error"))
 		fmt.Printf(color("There was an error creating the console. Please verify if you choose the right type.\n", "error"))
 	} else {
-		fmt.Printf(color(" Done. * %s \n", "response"), container_name)
+		fmt.Printf(color(" Done! \n", "response"))
+		fmt.Printf(color("Console ID: %s \n", "response"), container_name)
 		fmt.Printf(color("Console URL: %s \n", "response"), console_url)
 		stack, _ := GetStackInfo(access_token, console.Type)
 
