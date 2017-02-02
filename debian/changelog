@@ -1,3 +1,9 @@
+codepicnic (1.00) unstable; urgency=low
+
+  * Added short title and url in list 
+
+ -- CodePicnic <info@codepicnic.com>  Thu, 02 Feb 2017 12:00:00 +0000
+
 codepicnic (0.99) unstable; urgency=low
 
   * Added Console ID after creating a console 
