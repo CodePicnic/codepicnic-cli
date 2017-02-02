@@ -69,7 +69,11 @@ func CmdListConsoles() error {
 				}
 				layout := "2006-01-02T15:04:05.000Z"
 				t, _ := time.Parse(layout, consoles[i].CreatedAt)
-				console_cols := consoles[i].ContainerName + "|" + consoles[i].Title + "|" + consoles[i].ContainerType + "|" + t.Format("2006-01-02 15:04:05") + "|" + mounted + "|" + site + "/consoles/" + consoles[i].Permalink
+				console_title := consoles[i].Title
+				if len(console_title) > 23 {
+					console_title = console_title[:20] + "..."
+				}
+				console_cols := consoles[i].ContainerName + "|" + console_title + "|" + consoles[i].ContainerType + "|" + t.Format("2006-01-02 15:04:05") + "|" + mounted + "|" + consoles_short_url + consoles[i].Permalink
 				output = append(output, console_cols)
 			}
 		}
@@ -443,7 +447,7 @@ func CmdCreateConsole(console ConsoleExtra) error {
 		fmt.Printf(color("There was an error creating the console. Please verify if you choose the right type.\n", "error"))
 	} else {
 		fmt.Printf(color(" Done! \n", "response"))
-		fmt.Printf(color("Console ID: %s \n", "response"), container_name)
+		fmt.Printf(color("Console ID:  %s \n", "response"), container_name)
 		fmt.Printf(color("Console URL: %s \n", "response"), console_url)
 		stack, _ := GetStackInfo(access_token, console.Type)
 

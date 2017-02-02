@@ -25,6 +25,7 @@ import (
 )
 
 var cp_cache = cache.New(60*time.Minute, 30*time.Second)
+var cp_basedir = "/app"
 var mount_uid = uint32(1000)
 var mount_gid = uint32(1000)
 
@@ -627,7 +628,43 @@ func (d *Dir) RemoveFile(file string) (err error) {
 	if resp.StatusCode == 401 {
 		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
-	logrus.Infof("Remove file End %s", d.path+" / "+file)
+	//logrus.Infof("Remove file End %s", d.path+" / "+file)
+	return nil
+}
+
+func (d *Dir) RemoveDir(dir string) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
+	var cp_payload string
+	//logrus.Infof("Remove file %s", d.path+" / "+file)
+	if dir == "" {
+		//Avoid remove base directory
+		logrus.Infof("RemoveDir empty dir %s", dir)
+		//cp_payload = ` { "commands": "rm ` + dir + `" }`
+		return nil
+	} else if d.path == "" {
+		logrus.Infof("RemoveDir empty d.path %s", d.path)
+		cp_payload = ` { "commands": "rm -rf /app/` + dir + `" }`
+	} else {
+		cp_payload = ` { "commands": "rm -rf /app/` + d.path + "/" + dir + `" }`
+	}
+	logrus.Infof("RemoveDir payload %s", cp_payload)
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if err != nil {
+		logrus.Errorf("RemoveDir %v", err)
+		return err
+	}
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	logrus.Infof("Remove dir End %s", d.path+" / "+dir)
 	return nil
 }
 
@@ -887,6 +924,8 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	ch := make(chan error)
 	switch req.Dir {
 	case true:
+		logrus.Infof("Remove Dir %s", req.Name)
+		d.RemoveDir(req.Name)
 		return fuse.ENOENT
 
 	case false:
