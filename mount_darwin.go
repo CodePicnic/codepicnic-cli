@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -907,6 +906,11 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		path: path,
 	}
 	return n, nil
+}
+
+func RemoveFileFromCache(FileCollection []File, pos int) []File {
+	FileCollection[len(FileCollection)-1], FileCollection[pos] = FileCollection[pos], FileCollection[len(FileCollection)-1]
+	return FileCollection[:len(FileCollection)-1]
 }
 
 func IsVimFile(file string) bool {
