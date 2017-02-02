@@ -627,6 +627,42 @@ func (d *Dir) RemoveFile(file string) (err error) {
 	return nil
 }
 
+func (d *Dir) RemoveDir(dir string) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
+	var cp_payload string
+	//logrus.Infof("Remove file %s", d.path+" / "+file)
+	if dir == "" {
+		//Avoid remove base directory
+		logrus.Infof("RemoveDir empty dir %s", dir)
+		//cp_payload = ` { "commands": "rm ` + dir + `" }`
+		return nil
+	} else if d.path == "" {
+		logrus.Infof("RemoveDir empty d.path %s", d.path)
+		cp_payload = ` { "commands": "rm -rf /app/` + dir + `" }`
+	} else {
+		cp_payload = ` { "commands": "rm -rf /app/` + d.path + "/" + dir + `" }`
+	}
+	logrus.Infof("RemoveDir payload %s", cp_payload)
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if err != nil {
+		logrus.Errorf("RemoveDir %v", err)
+		return err
+	}
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	logrus.Infof("Remove dir End %s", d.path+" / "+dir)
+	return nil
+}
+
 func (f *File) UploadFile() (err error) {
 	cp_consoles_url := site + "/api/consoles/" + f.fs.container + "/upload_file"
 	var b bytes.Buffer
@@ -889,37 +925,45 @@ var _ = fs.NodeRemover(&Dir{})
 
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
-	logrus.Infof("Remove %v %v", req.Name, strconv.FormatBool(req.Dir))
+	//logrus.Infof("Remove %v %v", req.Name, strconv.FormatBool(req.Dir))
+	ch := make(chan error)
 	switch req.Dir {
 	case true:
-		return fuse.ENOENT
+		d.RemoveDir(req.Name)
 
 	case false:
-		isSwapFile, _ := regexp.MatchString(`^.+?\.sw.?$`, req.Name)
-		isBackupFile, _ := regexp.MatchString(`^.+?~$`, req.Name)
-		is4913, _ := regexp.MatchString(`^4913$`, req.Name)
-		if isSwapFile == false && isBackupFile == false && is4913 == false {
-			//logrus.Infof("Remove Normal File %s", req.Name)
-			err := d.RemoveFile(req.Name)
-			if err != nil {
-				if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-					//Probably the token expired, try again
-					logrus.Infof("Token expired, generating a new one")
-					d.fs.token, err = GetTokenAccess()
-					d.RemoveFile(req.Name)
-				}
-			}
+		if IsVimFile(req.Name) {
+			//logrus.Infof("Remove Vim File %s", req.Name)
+			go d.RemoveVimFile(req.Name, ch)
 		} else {
-			//logrus.Infof("Remove Swap File %s", req.Name)
-			//go d.RemoveFile(req.Name)
+			//logrus.Infof("Remove Normal File %s", req.Name)
+			d.RemoveFile(req.Name)
 		}
-		cache_key := d.fs.container + ":" + d.path
-		cp_cache.Delete(cache_key)
-		delete(d.mimemap, req.Name)
-		delete(d.sizemap, req.Name)
-		return nil
-		//return fuse.ENOENT
 	}
+	cache_key := d.fs.container + ":" + d.path
+	//logrus.Infof("Remove Check cache %s", cache_key)
+	cache_data, found := cp_cache.Get(cache_key)
+	if found {
+		//logrus.Infof("Remove Cache Found %+v", cache_data)
+		FileCollection := cache_data.([]File)
+		pos := 0
+		for _, cache_file := range cache_data.([]File) {
+			if cache_file.name == req.Name {
+				//logrus.Infof("Remove Cache File %s %v", cache_file.name, pos)
+				FileCollection = RemoveFileFromCache(cache_data.([]File), pos)
+				break
+			}
+			pos++
+		}
+		//logrus.Infof("Remove New cache FileCollection %v", FileCollection)
+		cp_cache.Set(cache_key, FileCollection, cache.DefaultExpiration)
+	} else {
+		//logrus.Infof("Remove Cache Not Found")
+		cp_cache.Delete(cache_key)
+	}
+	delete(d.mimemap, req.Name)
+	delete(d.sizemap, req.Name)
+
 	return nil
 }
 

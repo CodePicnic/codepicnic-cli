@@ -920,13 +920,10 @@ var _ = fs.NodeRemover(&Dir{})
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
 	//logrus.Infof("Remove %v %v", req.Name, strconv.FormatBool(req.Dir))
-	//logrus.Infof("Remove %+v", req)
 	ch := make(chan error)
 	switch req.Dir {
 	case true:
-		logrus.Infof("Remove Dir %s", req.Name)
 		d.RemoveDir(req.Name)
-		return fuse.ENOENT
 
 	case false:
 		if IsVimFile(req.Name) {
@@ -936,32 +933,31 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 			//logrus.Infof("Remove Normal File %s", req.Name)
 			d.RemoveFile(req.Name)
 		}
-		cache_key := d.fs.container + ":" + d.path
-		//logrus.Infof("Remove Check cache %s", cache_key)
-		cache_data, found := cp_cache.Get(cache_key)
-		if found {
-			//logrus.Infof("Remove Cache Found %+v", cache_data)
-			FileCollection := cache_data.([]File)
-			pos := 0
-			for _, cache_file := range cache_data.([]File) {
-				if cache_file.name == req.Name {
-					//logrus.Infof("Remove Cache File %s %v", cache_file.name, pos)
-					FileCollection = RemoveFileFromCache(cache_data.([]File), pos)
-					break
-				}
-				pos++
-			}
-			//logrus.Infof("Remove New cache FileCollection %v", FileCollection)
-			cp_cache.Set(cache_key, FileCollection, cache.DefaultExpiration)
-		} else {
-			//logrus.Infof("Remove Cache Not Found")
-			cp_cache.Delete(cache_key)
-		}
-		delete(d.mimemap, req.Name)
-		delete(d.sizemap, req.Name)
-		return nil
-		//return fuse.ENOENT
 	}
+	cache_key := d.fs.container + ":" + d.path
+	//logrus.Infof("Remove Check cache %s", cache_key)
+	cache_data, found := cp_cache.Get(cache_key)
+	if found {
+		//logrus.Infof("Remove Cache Found %+v", cache_data)
+		FileCollection := cache_data.([]File)
+		pos := 0
+		for _, cache_file := range cache_data.([]File) {
+			if cache_file.name == req.Name {
+				//logrus.Infof("Remove Cache File %s %v", cache_file.name, pos)
+				FileCollection = RemoveFileFromCache(cache_data.([]File), pos)
+				break
+			}
+			pos++
+		}
+		//logrus.Infof("Remove New cache FileCollection %v", FileCollection)
+		cp_cache.Set(cache_key, FileCollection, cache.DefaultExpiration)
+	} else {
+		//logrus.Infof("Remove Cache Not Found")
+		cp_cache.Delete(cache_key)
+	}
+	delete(d.mimemap, req.Name)
+	delete(d.sizemap, req.Name)
+
 	return nil
 }
 
