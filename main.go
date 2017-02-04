@@ -44,6 +44,7 @@ var config_dir = getHomeDir() + string(filepath.Separator) + cfg_dir
 var msg_rwperms = "Make sure you have read and write permissions to " + config_dir + " directory."
 
 var consoles_short_url = "https://codp.in/c/"
+var version_url = "https://deb.codepicnic.com/version"
 
 // https://github.com/docker/docker/blob/master/cli/command/container/cp.go
 func splitContainerFromPath(arg string) (container, path string) {
@@ -708,13 +709,6 @@ func main() {
 			Name:      "unmount",
 			Usage:     "unmount /app filesystem from a container",
 			ArgsUsage: "[CONSOLE_ID]",
-			//Flags: []cli.Flag{
-			//	cli.BoolFlag{
-			//		Name:        "debug",
-			//		Usage:       "Debugging",
-			//		Destination: &debug,
-			//	},
-			//},
 			Action: func(c *cli.Context) error {
 				//access_token, _ := GetTokenAccess()
 				/*if access_token == "" {
@@ -731,6 +725,14 @@ func main() {
 					fmt.Println("Error: ", err)
 					panic(err)
 				}*/
+				return nil
+			},
+		},
+		{
+			Name:  "update",
+			Usage: "update CodePicnic",
+			Action: func(c *cli.Context) error {
+				CmdUpdate()
 				return nil
 			},
 		},

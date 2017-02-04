@@ -320,6 +320,8 @@ func Repl(c *cli.Context) {
 				if dst_container != "" {
 					CmdUploadToConsole(dst_container, dst_path, src_path)
 				}
+			case "update":
+				CmdUpdate()
 			default:
 				fmt.Println(color("Command not recognized. Have you tried 'help'?", "response"))
 			}

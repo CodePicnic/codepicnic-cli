@@ -531,3 +531,7 @@ func CmdListStacks() error {
 	}
 	return nil
 }
+
+func CmdUpdate() error {
+	return nil
+}
