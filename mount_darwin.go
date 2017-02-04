@@ -65,11 +65,11 @@ type File struct {
 	mu         sync.Mutex
 	data       []byte
 	writers    uint
-	readlock   bool
 	fs         *FS
 	size       uint64
 	dir        *Dir
 	swap       bool
+	readlock   bool
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -301,8 +301,6 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 var _ = fs.NodeRequestLookuper(&Dir{})
 
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
-	//logrus.Infof("Lookup d.path = %s", d.path)
-	//logrus.Infof("Lookup req.Name = %s", req.Name)
 	if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
 		child := &File{
 			size: 0,
@@ -317,39 +315,32 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	cache_key := d.fs.container + ":" + d.path
 	_, found := cp_cache.Get(cache_key)
 	if found {
-		//logrus.Infof("Lookup Cache Found %s", cache_key)
 	} else {
-		//logrus.Infof("Lookup Cache Not Found %s", cache_key)
 		d.ReadDirAll(ctx)
 	}
 	if d.mimemap[path] != "" {
 		switch {
 		case d.mimemap[path] == "inode/directory":
-			//Debug("Lookup DIR", path)
 			child := &Dir{
 				fs:      d.fs,
 				path:    path,
 				mimemap: make(map[string]string),
 				sizemap: make(map[string]uint64),
 			}
-			//logrus.Infof("Lookup d dir = %v", d)
 			return child, nil
 		default:
-			//logrus.Infof("Lookup Case FILE path = %s", path)
 			child := &File{
 				size:       d.sizemap[path],
 				name:       req.Name,
 				path:       path,
 				mime:       d.mimemap[path],
 				basedir:    d.path,
-				readlock:   false,
 				fs:         d.fs,
 				dir:        d,
 				mountpoint: d.mountpoint,
+				readlock:   false,
 			}
-			//logrus.Infof("Lookup d file = %v", d)
 			return child, nil
-			//}
 		}
 	}
 	return nil, fuse.ENOENT

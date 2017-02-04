@@ -73,7 +73,7 @@ type File struct {
 	size       uint64
 	dir        *Dir
 	swap       bool
-	openlock   bool
+	readlock   bool
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -317,7 +317,6 @@ func (f *File) Forget(ctx context.Context, req *fuse.ForgetRequest) error {
 var _ = fs.NodeRequestLookuper(&Dir{})
 
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
-
 	if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
 		child := &File{
 			size: 0,
@@ -359,6 +358,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				fs:         d.fs,
 				dir:        d,
 				mountpoint: d.mountpoint,
+				readlock:   false,
 			}
 			return child, nil
 		}
@@ -498,7 +498,6 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	//logrus.Infof("Open Resp %v", resp)
 	//logrus.Infof("Open f %v", f)
 	//f.writers++
-	f.openlock = true
 	return f, nil
 	//return &FileHandle{path: f.path}, nil
 }
