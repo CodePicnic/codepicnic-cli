@@ -300,6 +300,7 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 
 var _ = fs.NodeRequestLookuper(&Dir{})
 
+/* old lookup for os x
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
 	if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
 		child := &File{
@@ -321,6 +322,56 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	if d.mimemap[path] != "" {
 		switch {
 		case d.mimemap[path] == "inode/directory":
+			child := &Dir{
+				fs:      d.fs,
+				path:    path,
+				mimemap: make(map[string]string),
+				sizemap: make(map[string]uint64),
+			}
+			return child, nil
+		default:
+			child := &File{
+				size:       d.sizemap[path],
+				name:       req.Name,
+				path:       path,
+				mime:       d.mimemap[path],
+				basedir:    d.path,
+				fs:         d.fs,
+				dir:        d,
+				mountpoint: d.mountpoint,
+				readlock:   false,
+			}
+			return child, nil
+		}
+	}
+	return nil, fuse.ENOENT
+}*/
+
+func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
+	if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
+		child := &File{
+			size: 0,
+			name: req.Name,
+		}
+		return child, nil
+	}
+	path := req.Name
+	if d.path != "" {
+		path = d.path + "/" + path
+	}
+	cache_key := d.fs.container + ":mimemap:" + d.path
+	cache_data, _ := cp_cache.Get(cache_key)
+
+	lookup_mimemap := make(map[string]string)
+	if len(d.mimemap) == 0 && cache_data != nil {
+		lookup_mimemap = cache_data.(map[string]string)
+	} else {
+		lookup_mimemap = d.mimemap
+	}
+
+	if lookup_mimemap[path] != "" {
+		switch {
+		case lookup_mimemap[path] == "inode/directory":
 			child := &Dir{
 				fs:      d.fs,
 				path:    path,
@@ -402,6 +453,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		}
 		//fmt.Printf("End ReadDirAll \n")
 	}
+	cache_key := d.fs.container + ":mimemap:" + d.path
+	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 	return res, nil
 }
 
@@ -737,6 +790,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		d.mimemap = make(map[string]string)
 	}
 	d.mimemap[f.name] = "inode/x-empty"
+	cache_key := d.fs.container + ":mimemap:" + d.path
+	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.?$`, f.name)
 	isBackupFile, _ := regexp.MatchString(`^.+?~$`, f.name)
 	is4913, _ := regexp.MatchString(`^4913$`, f.name)
@@ -892,9 +947,14 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 			d.CreateDir(new_dir)
 		}
 	}
+	d.mimemap[path] = "inode/directory"
+	cache_key := d.fs.container + ":mimemap:" + d.path
+	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 	n := &Dir{
-		fs:   d.fs,
-		path: path,
+		fs:      d.fs,
+		path:    path,
+		mimemap: make(map[string]string),
+		sizemap: make(map[string]uint64),
 	}
 	return n, nil
 }
@@ -958,6 +1018,8 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	}
 	delete(d.mimemap, req.Name)
 	delete(d.sizemap, req.Name)
+	cache_key = d.fs.container + ":mimemap:" + d.path
+	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 
 	return nil
 }
@@ -969,13 +1031,14 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 	return nil
 }
 
+/*
 var _ = fs.NodeGetattrer(&File{})
 
 func (f *File) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
 	//logrus.Infof("GetAttr %v", req)
 	//logrus.Infof("GetAttr Attr %v", f.Attr)
 	return f.Attr(ctx, &resp.Attr)
-}
+}*/
 
 var _ = fs.NodeSetattrer(&File{})
 
@@ -1000,15 +1063,31 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 }
 
 //var _ = fs.NodeGetattrer(&File{})
-
+/*
 func (f *File) GetAttr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
 	//logrus.Infof("GetAttr %v", req)
 	//logrus.Infof("GetAttr Attr %v", f.Attr)
 	return f.Attr(ctx, &resp.Attr)
-}
+}*/
 
 //var _ fs.NodeRenamer = (*Dir)(nil)
 
 //func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
 //  logrus.Infof("Rename %+v", req)
 //  return nil
+
+var _ = fs.FSStatfser(&FS{})
+
+func (fsys *FS) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.StatfsResponse) error {
+
+	resp.Bavail = 1<<43 + 5
+	resp.Bfree = 1<<43 + 5
+	resp.Files = 1<<59 + 11
+	resp.Ffree = 1<<58 + 13
+	//OSX (finder) only supports some Blocks sizes
+	//https://github.com/jacobsa/fuse/blob/3b8b4e55df5483817cd361a28d0a830d5acd962b/fuseops/ops.go
+	resp.Bsize = 1 << 15
+	logrus.Infof("Statfs %+v", req)
+	return nil
+
+}

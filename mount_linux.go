@@ -1007,3 +1007,19 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	return nil
 }
 */
+
+var _ = fs.FSStatfser(&FS{})
+
+func (fsys *FS) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.StatfsResponse) error {
+
+	resp.Bavail = 1<<43 + 5
+	resp.Bfree = 1<<43 + 5
+	resp.Files = 1<<59 + 11
+	resp.Ffree = 1<<58 + 13
+	//OSX (finder) only supports some Blocks sizes
+	//https://github.com/jacobsa/fuse/blob/3b8b4e55df5483817cd361a28d0a830d5acd962b/fuseops/ops.go
+	resp.Bsize = 1 << 15
+	logrus.Infof("Statfs %+v", req)
+	return nil
+
+}

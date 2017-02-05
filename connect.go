@@ -25,6 +25,13 @@ func holdHijackedConnection(tty bool, inputStream io.ReadCloser, outputStream, e
 	//outputStream = os.Stdout
 	//inputStream = os.Stdin
 	inFd, isTerminalIn := term.GetFdInfo(inputStream)
+	//winsize, _ := term.GetWinsize(inFd)
+	//fmt.Printf("%+v", winsize)
+	//terminalHeight := goterm.Height()
+	//terminalWidth := goterm.Width()
+
+	//fmt.Println("Terminal height : ", terminalHeight)
+	//fmt.Println("Terminal width : ", terminalWidth)
 	//outFd, isTerminalOut := term.GetFdInfo(outputStream)
 	if isTerminalIn && os.Getenv("NORAW") == "" {
 		state, err := term.SetRawTerminal(inFd)
