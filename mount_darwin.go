@@ -42,8 +42,6 @@ func (f *FS) Root() (fs.Node, error) {
 		mimemap:    make(map[string]string),
 		sizemap:    make(map[string]uint64),
 	}
-	//node_dir.mimemap["/"] = "inode/directory"
-	//node_dir.mimemap[""] = "inode/directory"
 	return node_dir, nil
 }
 
@@ -300,52 +298,6 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 
 var _ = fs.NodeRequestLookuper(&Dir{})
 
-/* old lookup for os x
-func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
-	if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
-		child := &File{
-			size: 0,
-			name: req.Name,
-		}
-		return child, nil
-	}
-	path := req.Name
-	if d.path != "" {
-		path = d.path + "/" + path
-	}
-	cache_key := d.fs.container + ":" + d.path
-	_, found := cp_cache.Get(cache_key)
-	if found {
-	} else {
-		d.ReadDirAll(ctx)
-	}
-	if d.mimemap[path] != "" {
-		switch {
-		case d.mimemap[path] == "inode/directory":
-			child := &Dir{
-				fs:      d.fs,
-				path:    path,
-				mimemap: make(map[string]string),
-				sizemap: make(map[string]uint64),
-			}
-			return child, nil
-		default:
-			child := &File{
-				size:       d.sizemap[path],
-				name:       req.Name,
-				path:       path,
-				mime:       d.mimemap[path],
-				basedir:    d.path,
-				fs:         d.fs,
-				dir:        d,
-				mountpoint: d.mountpoint,
-				readlock:   false,
-			}
-			return child, nil
-		}
-	}
-	return nil, fuse.ENOENT
-}*/
 
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
 	if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
@@ -355,6 +307,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 		return child, nil
 	}
+	logrus.Infof("Lookup %s %s", d.path, req.Name )
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
@@ -364,14 +317,17 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	lookup_mimemap := make(map[string]string)
 	if len(d.mimemap) == 0 && cache_data != nil {
+		
 		lookup_mimemap = cache_data.(map[string]string)
 	} else {
 		lookup_mimemap = d.mimemap
 	}
+	logrus.Infof("Lookup %s ", d.mimemap )
 
-	if lookup_mimemap[path] != "" {
+	//if lookup_mimemap[path] != "" {
+	if lookup_mimemap[req.Name] != "" {
 		switch {
-		case lookup_mimemap[path] == "inode/directory":
+		case lookup_mimemap[req.Name] == "inode/directory":
 			child := &Dir{
 				fs:      d.fs,
 				path:    path,
@@ -384,7 +340,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				size:       d.sizemap[path],
 				name:       req.Name,
 				path:       path,
-				mime:       d.mimemap[path],
+				mime:       d.mimemap[req.Name],
 				basedir:    d.path,
 				fs:         d.fs,
 				dir:        d,
@@ -407,14 +363,13 @@ func CreateErrorInode() fuse.Dirent {
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	//logrus.Infof("ReadDirAll d.path = %s", d.path)
 	var res []fuse.Dirent
 	var inode fuse.Dirent
 	files_list, err := ListFiles(d.fs.token, d.fs.container, d.path)
 	if err != nil {
 		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
 			//Probably the token expired, try again
-			logrus.Infof("Token expired, generating a new one")
+			//logrus.Infof("Token expired, generating a new one")
 			d.fs.token, err = GetTokenAccess()
 			files_list, err = ListFiles(d.fs.token, d.fs.container, d.path)
 		} else {
@@ -442,7 +397,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 				path = d.path + "/" + path
 			}
 			//d.mimemap[f.name] = f.mime
-			d.mimemap[path] = f.mime
+			//d.mimemap[path] = f.mime
+			d.mimemap[f.name] = f.mime
 			d.sizemap[path] = f.size
 			if f.mime == "inode/directory" {
 				inode.Type = fuse.DT_Dir
@@ -453,6 +409,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		}
 		//fmt.Printf("End ReadDirAll \n")
 	}
+	logrus.Infof("ReadDirAll d = %s %+v", d.path, d.mimemap)
 	cache_key := d.fs.container + ":mimemap:" + d.path
 	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 	return res, nil
@@ -511,7 +468,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	//if !req.Flags.IsReadOnly() {
 	//	return nil, fuse.Errno(syscall.EACCES)
 	//}
-	logrus.Infof("Open %s", f.name)
+	//logrus.Infof("Open %s", f.name)
 	//logrus.Infof("Open Req %v", req)
 	//logrus.Infof("Open Context %v", ctx)
 	//logrus.Infof("Open Attr %v", f.Attr)
@@ -531,8 +488,8 @@ var _ fs.HandleReader = (*File)(nil)
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	//t := f.content.Load().(string)
-	logrus.Infof("Read %s", f.name)
-	logrus.Infof("Read %s", string(f.data))
+	//logrus.Infof("Read %s", f.name)
+	//logrus.Infof("Read %s", string(f.data))
 	var err error
 	var t string
 	cache_key := "file:" + f.fs.container + ":" + f.path + ":" + f.name
@@ -645,7 +602,7 @@ func (d *Dir) RemoveVimFile(file string, ch chan error) (err error) {
 func (d *Dir) RemoveFile(file string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
-	logrus.Infof("Remove file %s", d.path+" / "+file)
+	//logrus.Infof("Remove file %s", d.path+" / "+file)
 	if d.path == "" {
 		cp_payload = ` { "commands": "rm ` + file + `" }`
 	} else {
@@ -685,7 +642,7 @@ func (d *Dir) RemoveDir(dir string) (err error) {
 	} else {
 		cp_payload = ` { "commands": "rm -rf /app/` + d.path + "/" + dir + `" }`
 	}
-	logrus.Infof("RemoveDir payload %s", cp_payload)
+	//logrus.Infof("RemoveDir payload %s", cp_payload)
 	var jsonStr = []byte(cp_payload)
 
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
@@ -710,7 +667,7 @@ func (f *File) UploadFile() (err error) {
 	cp_consoles_url := site + "/api/consoles/" + f.fs.container + "/upload_file"
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
-	logrus.Infof("Upload Data %s", string(f.data))
+	//logrus.Infof("Upload Data %s", string(f.data))
 	temp_file, err := ioutil.TempFile(os.TempDir(), "cp_")
 	err = ioutil.WriteFile(temp_file.Name(), f.data, 0666)
 	if err != nil {
@@ -772,7 +729,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	var new_file string
 	logrus.Infof("Create %v %s", req.Name, d.path)
 	//logrus.Infof("Create Context %v", ctx)
-	//logrus.Infof("Create Flags %s", req.Flags.String())
+	logrus.Infof("Create Flags %+v", req)
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
@@ -807,7 +764,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		if err != nil {
 			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
 				//Probably the token expired, try again
-				logrus.Infof("Token expired, generating a new one")
+				//logrus.Infof("Token expired, generating a new one")
 				d.fs.token, err = GetTokenAccess()
 				d.CreateFile(new_file)
 			}
@@ -826,9 +783,9 @@ var _ = fs.HandleWriter(&File{})
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	f.writers = 1
 	logrus.Infof("Write %s", f.name)
-	logrus.Infof("Write req.Data  %s", string(req.Data))
+	//logrus.Infof("Write req.Data  %s", string(req.Data))
 	//logrus.Infof("Write req.Flags  %v", req)
-	logrus.Infof("Write f.Data  %s", string(f.data))
+	//logrus.Infof("Write f.Data  %s", string(f.data))
 	//logrus.Infof("Write len req.Data  %v", int64(len(req.Data)))
 	//logrus.Infof("Write req.Offset  %v", req.Offset)
 
@@ -837,7 +794,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	// expand the buffer if necessary
 	newLen := req.Offset + int64(len(req.Data))
-	logrus.Infof("Write newLen  %v", req.Offset)
+	//logrus.Infof("Write newLen  %v", req.Offset)
 	if newLen > int64(maxInt) {
 		return fuse.Errno(syscall.EFBIG)
 	}
@@ -942,12 +899,12 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	if err != nil {
 		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
 			//Probably the token expired, try again
-			logrus.Infof("Token expired, generating a new one")
+			//logrus.Infof("Token expired, generating a new one")
 			d.fs.token, err = GetTokenAccess()
 			d.CreateDir(new_dir)
 		}
 	}
-	d.mimemap[path] = "inode/directory"
+	d.mimemap[req.Name] = "inode/directory"
 	cache_key := d.fs.container + ":mimemap:" + d.path
 	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 	n := &Dir{
@@ -956,6 +913,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		mimemap: make(map[string]string),
 		sizemap: make(map[string]uint64),
 	}
+	logrus.Infof("Mkdir d = %s %+v", d.path, d.mimemap)
 	return n, nil
 }
 
@@ -980,7 +938,7 @@ var _ = fs.NodeRemover(&Dir{})
 
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
-	//logrus.Infof("Remove %v %v", req.Name, strconv.FormatBool(req.Dir))
+	logrus.Infof("Remove %s %v", d.path, req.Name)
 	ch := make(chan error)
 	switch req.Dir {
 	case true:
@@ -1016,8 +974,10 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		//logrus.Infof("Remove Cache Not Found")
 		cp_cache.Delete(cache_key)
 	}
+	logrus.Infof("Delete d.mimemap %s", req.Name)
 	delete(d.mimemap, req.Name)
 	delete(d.sizemap, req.Name)
+	logrus.Infof("Remove d.mimemap %s ", d.mimemap )
 	cache_key = d.fs.container + ":mimemap:" + d.path
 	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 
@@ -1088,7 +1048,7 @@ func (fsys *FS) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 	//https://github.com/jacobsa/fuse/blob/3b8b4e55df5483817cd361a28d0a830d5acd962b/fuseops/ops.go
 	resp.Bsize = 1 << 15
 	resp.Namelen = 2048
-	logrus.Infof("Statfs %+v", req)
+	//logrus.Infof("Statfs %+v", req)
 	return nil
 
 }
