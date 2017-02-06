@@ -1,4 +1,10 @@
-codepicnic (1.03) unstable; urgency=low
+codepicnic (1.04) unstable; urgency=low
+
+  * Fix long copy in os x 
+
+ -- CodePicnic <info@codepicnic.com>  Thu, 05 Feb 2017 03:00:00 +0000
+
+odepicnic (1.03) unstable; urgency=low
 
   * Fix recursive copy in os x 
 
