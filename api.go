@@ -493,3 +493,29 @@ func UploadFileToConsole(token string, console_id string, dst string, src string
 	}
 	return nil
 }
+
+func GetLastVersion() (string, error) {
+	var version_url = "http://deb.codepicnic.com/version"
+	req, err := http.NewRequest("GET", version_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", user_agent)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf(err.Error())
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	return strings.TrimRight(string(body), "\r\n"), nil
+}
+func IsLastVersion() (bool, error) {
+
+	last_version, err := GetLastVersion()
+	if err != nil {
+		return true, err
+	}
+	float_last_version, err := strconv.ParseFloat(last_version, 64)
+	return false, nil
+}

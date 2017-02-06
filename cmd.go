@@ -533,5 +533,10 @@ func CmdListStacks() error {
 }
 
 func CmdUpdate() error {
+	new_version, err := GetVersion()
+	if err != nil {
+		return err
+	}
+	fmt.Println(new_version)
 	return nil
 }
