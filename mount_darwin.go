@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-var cp_cache = cache.New(5*time.Minute, 30*time.Second)
+var cp_cache = cache.New(60*time.Minute, 30*time.Second)
 
 type FS struct {
 	fuse       *fs.Server
