@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -517,5 +518,6 @@ func IsLastVersion() (bool, error) {
 		return true, err
 	}
 	float_last_version, err := strconv.ParseFloat(last_version, 64)
+	fmt.Println(float_last_version)
 	return false, nil
 }
