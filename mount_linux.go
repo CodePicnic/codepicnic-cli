@@ -46,8 +46,6 @@ func (f *FS) Root() (fs.Node, error) {
 		mimemap:    make(map[string]string),
 		sizemap:    make(map[string]uint64),
 	}
-	//node_dir.mimemap["/"] = "inode/directory"
-	//node_dir.mimemap[""] = "inode/directory"
 	return node_dir, nil
 }
 
@@ -338,9 +336,9 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		lookup_mimemap = d.mimemap
 	}
 
-	if lookup_mimemap[path] != "" {
+	if lookup_mimemap[req.Name] != "" {
 		switch {
-		case lookup_mimemap[path] == "inode/directory":
+		case lookup_mimemap[req.Name] == "inode/directory":
 			child := &Dir{
 				fs:      d.fs,
 				path:    path,
@@ -350,10 +348,10 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			return child, nil
 		default:
 			child := &File{
-				size:       d.sizemap[path],
+				size:       d.sizemap[req.Name],
 				name:       req.Name,
 				path:       path,
-				mime:       d.mimemap[path],
+				mime:       d.mimemap[req.Name],
 				basedir:    d.path,
 				fs:         d.fs,
 				dir:        d,
@@ -410,9 +408,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 			if d.path != "" {
 				path = d.path + "/" + path
 			}
-			//d.mimemap[f.name] = f.mime
-			d.mimemap[path] = f.mime
-			d.sizemap[path] = f.size
+			d.mimemap[f.name] = f.mime
+			d.sizemap[f.name] = f.size
 			if f.mime == "inode/directory" {
 				inode.Type = fuse.DT_Dir
 			} else {
@@ -895,7 +892,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 			d.CreateDir(new_dir)
 		}
 	}
-	d.mimemap[path] = "inode/directory"
+	d.mimemap[req.Name] = "inode/directory"
 	cache_key := d.fs.container + ":mimemap:" + d.path
 	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 	n := &Dir{

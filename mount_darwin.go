@@ -298,7 +298,6 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 
 var _ = fs.NodeRequestLookuper(&Dir{})
 
-
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
 	if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
 		child := &File{
@@ -307,7 +306,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 		return child, nil
 	}
-	logrus.Infof("Lookup %s %s", d.path, req.Name )
+	//logrus.Infof("Lookup %s %s", d.path, req.Name )
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
@@ -317,12 +316,12 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	lookup_mimemap := make(map[string]string)
 	if len(d.mimemap) == 0 && cache_data != nil {
-		
+
 		lookup_mimemap = cache_data.(map[string]string)
 	} else {
 		lookup_mimemap = d.mimemap
 	}
-	logrus.Infof("Lookup %s ", d.mimemap )
+	//logrus.Infof("Lookup %s ", d.mimemap)
 
 	//if lookup_mimemap[path] != "" {
 	if lookup_mimemap[req.Name] != "" {
@@ -337,7 +336,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			return child, nil
 		default:
 			child := &File{
-				size:       d.sizemap[path],
+				size:       d.sizemap[req.Name],
 				name:       req.Name,
 				path:       path,
 				mime:       d.mimemap[req.Name],
@@ -396,10 +395,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 			if d.path != "" {
 				path = d.path + "/" + path
 			}
-			//d.mimemap[f.name] = f.mime
-			//d.mimemap[path] = f.mime
 			d.mimemap[f.name] = f.mime
-			d.sizemap[path] = f.size
+			d.sizemap[f.name] = f.size
 			if f.mime == "inode/directory" {
 				inode.Type = fuse.DT_Dir
 			} else {
@@ -409,7 +406,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		}
 		//fmt.Printf("End ReadDirAll \n")
 	}
-	logrus.Infof("ReadDirAll d = %s %+v", d.path, d.mimemap)
+	//logrus.Infof("ReadDirAll d = %s %+v", d.path, d.mimemap)
 	cache_key := d.fs.container + ":mimemap:" + d.path
 	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 	return res, nil
@@ -633,11 +630,11 @@ func (d *Dir) RemoveDir(dir string) (err error) {
 	//logrus.Infof("Remove file %s", d.path+" / "+file)
 	if dir == "" {
 		//Avoid remove base directory
-		logrus.Infof("RemoveDir empty dir %s", dir)
+		//logrus.Infof("RemoveDir empty dir %s", dir)
 		//cp_payload = ` { "commands": "rm ` + dir + `" }`
 		return nil
 	} else if d.path == "" {
-		logrus.Infof("RemoveDir empty d.path %s", d.path)
+		//logrus.Infof("RemoveDir empty d.path %s", d.path)
 		cp_payload = ` { "commands": "rm -rf /app/` + dir + `" }`
 	} else {
 		cp_payload = ` { "commands": "rm -rf /app/` + d.path + "/" + dir + `" }`
@@ -729,7 +726,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	var new_file string
 	logrus.Infof("Create %v %s", req.Name, d.path)
 	//logrus.Infof("Create Context %v", ctx)
-	logrus.Infof("Create Flags %+v", req)
+	//logrus.Infof("Create Flags %+v", req)
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
@@ -770,7 +767,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 			}
 		}
 	} else {
-		logrus.Infof("File %s Exclusive", req.Name)
+		//logrus.Infof("File %s Exclusive", req.Name)
 		f.swap = true
 	}
 	return f, f, nil
@@ -782,7 +779,7 @@ var _ = fs.HandleWriter(&File{})
 
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	f.writers = 1
-	logrus.Infof("Write %s", f.name)
+	//logrus.Infof("Write %s", f.name)
 	//logrus.Infof("Write req.Data  %s", string(req.Data))
 	//logrus.Infof("Write req.Flags  %v", req)
 	//logrus.Infof("Write f.Data  %s", string(f.data))
@@ -913,7 +910,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		mimemap: make(map[string]string),
 		sizemap: make(map[string]uint64),
 	}
-	logrus.Infof("Mkdir d = %s %+v", d.path, d.mimemap)
+	//logrus.Infof("Mkdir d = %s %+v", d.path, d.mimemap)
 	return n, nil
 }
 
@@ -938,7 +935,7 @@ var _ = fs.NodeRemover(&Dir{})
 
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
-	logrus.Infof("Remove %s %v", d.path, req.Name)
+	//logrus.Infof("Remove %s %v", d.path, req.Name)
 	ch := make(chan error)
 	switch req.Dir {
 	case true:
@@ -974,10 +971,10 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		//logrus.Infof("Remove Cache Not Found")
 		cp_cache.Delete(cache_key)
 	}
-	logrus.Infof("Delete d.mimemap %s", req.Name)
+	//logrus.Infof("Delete d.mimemap %s", req.Name)
 	delete(d.mimemap, req.Name)
 	delete(d.sizemap, req.Name)
-	logrus.Infof("Remove d.mimemap %s ", d.mimemap )
+	//logrus.Infof("Remove d.mimemap %s ", d.mimemap)
 	cache_key = d.fs.container + ":mimemap:" + d.path
 	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 

@@ -26,7 +26,7 @@ mv debian/rules.new debian/rules
 
 # Add control/changelog files
 cp ../control debian/control
-cp ../changelog debian/changelog
+#cp ../changelog debian/changelog
 
 # debian/install must contain the list of scripts to install 
 # as well as the target directory
