@@ -88,6 +88,21 @@ func SaveMountsToFile(container string, mountpoint string) {
 	return
 
 }
+func RemoveMountFromFile(container string) {
+
+	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
+	if err != nil {
+		panic(err)
+	}
+	cfg.Section("mounts").DeleteKey(container)
+	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
+
+	if err != nil {
+		fmt.Println(color(msg_rwperms, "error"))
+	}
+	return
+
+}
 
 func GetMountsFromFile(container string) string {
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
