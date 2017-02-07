@@ -829,11 +829,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 		return nil
 	}
 
-	//logrus.Infof("Flush Write")
-	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.?$`, f.name)
-	isBackupFile, _ := regexp.MatchString(`^.+?~$`, f.name)
-	is4913, _ := regexp.MatchString(`^4913$`, f.name)
-	if isSwapFile == false && isBackupFile == false && is4913 == false {
+	if IsVimFile(f.name) == false {
 		err := f.UploadFile()
 		if err != nil {
 			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
@@ -847,8 +843,6 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	} else {
 		//logrus.Infof("Swap File %v %v %v ", isSwapFile, isBackupFile, is4913)
 	}
-	//logrus.Infof("Invalidate cache %s", cache_key)
-	//Invalidate cache and unlock ReadFile after a Write Flush
 	f.readlock = false
 	cache_key := "file:" + f.fs.container + ":" + f.path + ":" + f.name
 	cp_cache.Delete(cache_key)
@@ -915,8 +909,9 @@ func RemoveFileFromCache(FileCollection []File, pos int) []File {
 func IsVimFile(file string) bool {
 	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.+$`, file)
 	isBackupFile, _ := regexp.MatchString(`^.+?~$`, file)
-	is4913, _ := regexp.MatchString(`^4913$`, file)
-	if isSwapFile == false && isBackupFile == false && is4913 == false {
+	is4913, _ := regexe.MatchString(`^4913$`, file)
+	isDotUnderscore, _ := regexp.MatchString(`^\._.+?$`, file)
+	if isSwapFile == false && isBackupFile == false && is4913 == false && isDotUnderscore {
 		return false
 	} else {
 		return true

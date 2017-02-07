@@ -874,7 +874,6 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 
 	} else {
 	}
-	//logrus.Infof("Invalidate cache %s", cache_key)
 	return nil
 }
 
@@ -939,8 +938,10 @@ func RemoveFileFromCache(FileCollection []File, pos int) []File {
 func IsVimFile(file string) bool {
 	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.+$`, file)
 	isBackupFile, _ := regexp.MatchString(`^.+?~$`, file)
-	is4913, _ := regexp.MatchString(`^4913$`, file)
-	if isSwapFile == false && isBackupFile == false && is4913 == false {
+	is4913, _ := regexe.MatchString(`^4913$`, file)
+	isDotUnderscore, _ := regexp.MatchString(`^\._.+?$`, file)
+	isDotUnderscore, _ := regexp.MatchString(`^\._.+?$`, file)
+	if isSwapFile == false && isBackupFile == false && is4913 == false && isDotUnderscore {
 		return false
 	} else {
 		return true
