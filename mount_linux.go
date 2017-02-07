@@ -544,7 +544,7 @@ func (d *Dir) CreateDir(newdir string) (err error) {
 }
 
 func (d *Dir) CreateFile(newfile string) (err error) {
-	//logrus.Infof("CreateFile %s", newfile)
+	logrus.Infof("CreateFile %s", newfile)
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/create_file"
 	cp_payload := ` { "path": "` + newfile + `" }`
 	var jsonStr = []byte(cp_payload)
@@ -743,7 +743,7 @@ func (f *File) UploadFile() (err error) {
 		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
 	// Delete the resources we created
-	err = os.Remove(temp_file.Name())
+	//err = os.Remove(temp_file.Name())
 	if err != nil {
 		logrus.Errorf("Remove temp_file %v", err)
 	}
@@ -797,43 +797,52 @@ const maxInt = int(^uint(0) >> 1)
 
 var _ = fs.HandleWriter(&File{})
 
+/*
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	f.writers = 1
-	//logrus.Infof("Write %s", f.name)
-	//fmt.Printf("Req Data %v \n", req.Data)
-	//fmt.Printf("Req Len %v \n", int64(len(req.Data)))
-	//fmt.Printf("Req Offset %v \n", req.Offset)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// expand the buffer if necessary
 	newLen := req.Offset + int64(len(req.Data))
-	//fmt.Printf("Req NewLen %v \n", newLen)
-	//fmt.Printf("Req Len File %v \n", len(f.data))
-	//fmt.Printf("Req Size File %v \n", f.size)
 	if newLen > int64(maxInt) {
-		//fmt.Printf("Write ERROR %v \n", f.name)
 		return fuse.Errno(syscall.EFBIG)
 	}
 
-	/*if newLen := int(newLen); newLen > len(f.data) {
-		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
-	}*/
 	//use file size is better than len(f.data)
 	if newLen := int(newLen); newLen > int(f.size) {
 		f.data = append(f.data, make([]byte, newLen-int(f.size))...)
 	} else if newLen < int(f.size) {
-		//if newLen is < f.size we need to shrink the slice
-		//fmt.Printf("Req NewLen %v \n", newLen)
-		//fmt.Printf("f.data %v \n", f.data)
-		//f.data = append([]byte(nil), f.data[:newLen]...)
 		f.data = append([]byte(nil), req.Data[:newLen]...)
 	}
 
 	n := copy(f.data[req.Offset:], req.Data)
 	resp.Size = n
 	f.size = uint64(n)
-	//fmt.Printf("Resp Size File %v \n", n)
+	return nil
+}*/
+
+func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
+	f.writers = 1
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// expand the buffer if necessary
+	newLen := req.Offset + int64(len(req.Data))
+	if newLen > int64(maxInt) {
+		return fuse.Errno(syscall.EFBIG)
+	}
+
+	//use file size is better than len(f.data)
+	if newLen := int(newLen); newLen > len(f.data) {
+		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
+	} else if newLen < len(f.data) {
+		f.data = append([]byte(nil), req.Data[:newLen]...)
+	}
+
+	_ = copy(f.data[req.Offset:], req.Data)
+	resp.Size = len(req.Data)
+	f.size = uint64(len(req.Data))
 	return nil
 }
 

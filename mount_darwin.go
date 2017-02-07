@@ -794,45 +794,23 @@ var _ = fs.HandleWriter(&File{})
 
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	f.writers = 1
-	//logrus.Infof("Write %s", f.name)
-	//logrus.Infof("Write req.Data  %s", string(req.Data))
-	//logrus.Infof("Write req.Flags  %v", req)
-	//logrus.Infof("Write f.Data  %s", string(f.data))
-	//logrus.Infof("Write len req.Data  %v", int64(len(req.Data)))
-	//logrus.Infof("Write req.Offset  %v", req.Offset)
-
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// expand the buffer if necessary
 	newLen := req.Offset + int64(len(req.Data))
-	//logrus.Infof("Write newLen  %v", req.Offset)
 	if newLen > int64(maxInt) {
 		return fuse.Errno(syscall.EFBIG)
 	}
 
-	/*if newLen := int(newLen); newLen > len(f.data) {
-		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
-	}*/
 	//use file size is better than len(f.data)
-	//logrus.Infof("Write newLen = %v vs int(f.size) = %v ", newLen, int(f.size))
-	//if newLen := int(newLen); newLen > int(f.size) {
 	if newLen := int(newLen); newLen > len(f.data) {
-		//f.data = append(f.data, make([]byte, newLen-int(f.size))...)
 		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
-		//logrus.Infof("Write f.Data after append  %s", string(f.data))
-		//} else if newLen < int(f.size) {
 	} else if newLen < len(f.data) {
-		//if newLen is < f.size we need to shrink the slice
-		//f.data = append([]byte(nil), f.data[:newLen]...)
 		f.data = append([]byte(nil), req.Data[:newLen]...)
 	}
 
 	_ = copy(f.data[req.Offset:], req.Data)
-	//logrus.Infof("Write f.Data after write  %s", string(f.data))
-	//logrus.Infof("Write n  %v", n)
-	//resp.Size = n
-	//f.size = uint64(n)
 	resp.Size = len(req.Data)
 	f.size = uint64(len(req.Data))
 	return nil
