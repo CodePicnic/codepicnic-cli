@@ -938,7 +938,7 @@ func RemoveFileFromCache(FileCollection []File, pos int) []File {
 func IsVimFile(file string) bool {
 	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.+$`, file)
 	isBackupFile, _ := regexp.MatchString(`^.+?~$`, file)
-	is4913, _ := regexe.MatchString(`^4913$`, file)
+	is4913, _ := regexp.MatchString(`^4913$`, file)
 	isDotUnderscore, _ := regexp.MatchString(`^\._.+?$`, file)
 	isDotUnderscore, _ := regexp.MatchString(`^\._.+?$`, file)
 	if isSwapFile == false && isBackupFile == false && is4913 == false && isDotUnderscore {
