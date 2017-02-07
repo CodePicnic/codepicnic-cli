@@ -568,6 +568,33 @@ func (d *Dir) CreateFile(newfile string) (err error) {
 	return nil
 }
 
+func (d *Dir) TouchFile(file string, ch chan error) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
+	var cp_payload string
+	cp_payload = ` { "commands": "touch ` + file + `" }`
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		ch <- errors.New(ERROR_NOT_AUTHORIZED)
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	if err != nil {
+		logrus.Errorf("CreateFile %v", err)
+		ch <- err
+		return err
+	}
+	ch <- err
+	return nil
+}
+
 func (d *Dir) RemoveVimFile(file string, ch chan error) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
@@ -603,7 +630,6 @@ func (d *Dir) RemoveVimFile(file string, ch chan error) (err error) {
 func (d *Dir) RemoveFile(file string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
-	//logrus.Infof("Remove file %s", d.path+" / "+file)
 	if d.path == "" {
 		cp_payload = ` { "commands": "rm ` + file + `" }`
 	} else {
@@ -730,20 +756,20 @@ var _ = fs.NodeCreater(&Dir{})
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	var new_file string
-	//logrus.Infof("Create %v %s", req.Name, d.path)
+	ch := make(chan error)
 	//logrus.Infof("Create Request %+v", req)
-	//logrus.Infof("Create Flags %s", req.Flags.String())
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
 	}
 	f := &File{
-		name:    req.Name,
-		path:    path,
-		writers: 0,
-		fs:      d.fs,
-		dir:     d,
-		basedir: d.path,
+		name:     req.Name,
+		path:     path,
+		writers:  0,
+		fs:       d.fs,
+		dir:      d,
+		basedir:  d.path,
+		readlock: false,
 	}
 	if d.mimemap == nil {
 		d.mimemap = make(map[string]string)
@@ -751,27 +777,18 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.mimemap[f.name] = "inode/x-empty"
 	cache_key := d.fs.container + ":mimemap:" + d.path
 	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
-	//if strings.Contains(req.Flags.String(), "OpenExclusive") {
+	cache_key = d.fs.container + ":" + d.path
+	cp_cache.Get(cache_key)
 	if IsVimFile(req.Name) == true {
-		logrus.Infof("Create VIM File %s", req.Name)
 		f.swap = true
 	} else {
-		if d.path == "/" {
+		if d.path == "" {
 			new_file = req.Name
-			//} else if strings.HasSuffix(f.name, ".swp") {
-			//	return f, f, nil
 		} else {
 			new_file = d.path + "/" + req.Name
 		}
-		err := d.CreateFile(new_file)
-		if err != nil {
-			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-				//Probably the token expired, try again
-				//logrus.Infof("Token expired, generating a new one")
-				d.fs.token, err = GetTokenAccess()
-				d.CreateFile(new_file)
-			}
-		}
+		//err := d.CreateFile(new_file)
+		go d.TouchFile(new_file, ch)
 	}
 	return f, f, nil
 }
@@ -835,8 +852,6 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 		return nil
 	}
 
-	//logrus.Infof("Flush Write")
-	//if isSwapFile == false && isBackupFile == false && is4913 == false {
 	if IsVimFile(f.name) == false {
 		err := f.UploadFile()
 		if err != nil {

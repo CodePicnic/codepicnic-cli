@@ -564,6 +564,33 @@ func (d *Dir) CreateFile(newfile string) (err error) {
 	return nil
 }
 
+func (d *Dir) TouchFile(file string, ch chan error) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
+	var cp_payload string
+	cp_payload = ` { "commands": "touch ` + file + `" }`
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		ch <- errors.New(ERROR_NOT_AUTHORIZED)
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	if err != nil {
+		logrus.Errorf("CreateFile %v", err)
+		ch <- err
+		return err
+	}
+	ch <- err
+	return nil
+}
+
 func (d *Dir) RemoveVimFile(file string, ch chan error) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
@@ -724,9 +751,8 @@ var _ = fs.NodeCreater(&Dir{})
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	var new_file string
-	logrus.Infof("Create %v %s", req.Name, d.path)
-	//logrus.Infof("Create Context %v", ctx)
-	//logrus.Infof("Create Flags %+v", req)
+	ch := make(chan error)
+	//logrus.Infof("Create Request %+v", req)
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
@@ -746,29 +772,18 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.mimemap[f.name] = "inode/x-empty"
 	cache_key := d.fs.container + ":mimemap:" + d.path
 	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
-	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.?$`, f.name)
-	isBackupFile, _ := regexp.MatchString(`^.+?~$`, f.name)
-	is4913, _ := regexp.MatchString(`^4913$`, f.name)
-	if isSwapFile == false && isBackupFile == false && is4913 == false {
-		if d.path == "/" {
+	cache_key = d.fs.container + ":" + d.path
+	cp_cache.Get(cache_key)
+	if IsVimFile(req.Name) == true {
+		f.swap = true
+	} else {
+		if d.path == "" {
 			new_file = req.Name
-			//} else if strings.HasSuffix(f.name, ".swp") {
-			//	return f, f, nil
 		} else {
 			new_file = d.path + "/" + req.Name
 		}
-		err := d.CreateFile(new_file)
-		if err != nil {
-			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-				//Probably the token expired, try again
-				//logrus.Infof("Token expired, generating a new one")
-				d.fs.token, err = GetTokenAccess()
-				d.CreateFile(new_file)
-			}
-		}
-	} else {
-		//logrus.Infof("File %s Exclusive", req.Name)
-		f.swap = true
+		//err := d.CreateFile(new_file)
+		go d.TouchFile(new_file, ch)
 	}
 	return f, f, nil
 }
