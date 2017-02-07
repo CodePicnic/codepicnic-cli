@@ -10,7 +10,6 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/docker/pkg/system"
-	"github.com/go-ini/ini"
 	"golang.org/x/net/context"
 	"io"
 	"os"
@@ -59,86 +58,6 @@ func splitContainerFromPath(arg string) (container, path string) {
 	}
 
 	return parts[0], parts[1]
-}
-
-func CreateConfigDir() {
-	config_file := config_dir + string(filepath.Separator) + cfg_file
-	os.Mkdir(config_dir, 0755)
-	if _, err := os.Stat(config_file); os.IsNotExist(err) {
-		f, err := os.Create(config_file)
-		if err != nil {
-			fmt.Println(color(msg_rwperms, "error"))
-		}
-		f.Close()
-	}
-}
-
-func SaveMountsToFile(container string, mountpoint string) {
-
-	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-	if err != nil {
-		panic(err)
-	}
-	cfg.Section("mounts").Key(container).SetValue(mountpoint)
-	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-
-	if err != nil {
-		fmt.Println(color(msg_rwperms, "error"))
-	}
-	return
-
-}
-func RemoveMountFromFile(container string) {
-
-	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-	if err != nil {
-		panic(err)
-	}
-	cfg.Section("mounts").DeleteKey(container)
-	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-
-	if err != nil {
-		fmt.Println(color(msg_rwperms, "error"))
-	}
-	return
-
-}
-
-func GetMountsFromFile(container string) string {
-	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-	if err != nil {
-		fmt.Println(color("Error.", "error"))
-		fmt.Println(color(msg_rwperms, "error"))
-	}
-	mountpoint := cfg.Section("mounts").Key(container).String()
-	return mountpoint
-}
-func GetAllMountsFromFile() []string {
-	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-	if err != nil {
-		fmt.Println(color("Error.", "error"))
-		fmt.Println(color(msg_rwperms, "error"))
-	}
-	mountpoint := cfg.Section("mounts").KeyStrings()
-	return mountpoint
-}
-
-func SaveTokenToFile(access_token string) {
-
-	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-	if err != nil {
-		fmt.Println(color("Error.", "error"))
-		fmt.Println(color(msg_rwperms, "error"))
-	}
-	cfg.Section("credentials").Key("access_token").SetValue(access_token)
-	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-
-	if err != nil {
-		fmt.Println(color("Error.", "error"))
-		fmt.Println(color(msg_rwperms, "error"))
-	}
-	return
-
 }
 
 func getHomeDir() string {
@@ -316,7 +235,6 @@ func main() {
 	app.Usage = "A CLI tool to manage your CodePicnic consoles"
 	var container_size, container_type, title, hostname, current_mode string
 	var client_id, client_secret string
-
 	app.Action = func(c *cli.Context) error {
 		//Start the REPL if not argument given
 
@@ -336,6 +254,26 @@ func main() {
 	}
 
 	app.Commands = []cli.Command{
+		{
+			Name:   "bgmount",
+			Usage:  "mount /app filesystem from a container",
+			Hidden: true,
+			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
+				CmdMountConsole(c.Args())
+				return nil
+			},
+		},
+		{
+			Name:   "check",
+			Usage:  "check version",
+			Hidden: true,
+			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
+				CmdCheck()
+				return nil
+			},
+		},
 		{
 			Name: "clear",
 			//Aliases: []string{"cls"},
@@ -646,23 +584,6 @@ func main() {
 			},
 		},
 		{
-			Name:   "bgmount",
-			Usage:  "mount /app filesystem from a container",
-			Hidden: true,
-			//Flags: []cli.Flag{
-			//	cli.BoolFlag{
-			//		Name:        "debug",
-			//		Usage:       "Debugging",
-			//		Destination: &debug,
-			//	},
-			//},
-			Action: func(c *cli.Context) error {
-				CmdValidateCredentials()
-				CmdMountConsole(c.Args())
-				return nil
-			},
-		},
-		{
 			Name:      "remove",
 			Usage:     "remove a console",
 			ArgsUsage: "[CONSOLE_ID]",
@@ -753,6 +674,7 @@ func main() {
 			},
 		},
 	}
+	CmdCheck()
 	app.Run(os.Args)
 	color_exit()
 }

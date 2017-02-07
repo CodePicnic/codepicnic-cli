@@ -12,7 +12,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -493,34 +492,4 @@ func UploadFileToConsole(token string, console_id string, dst string, src string
 		err = fmt.Errorf("bad status: %s", res.Status)
 	}
 	return nil
-}
-
-func GetLastVersion() (string, error) {
-	var version_url = "http://deb.codepicnic.com/version"
-	req, err := http.NewRequest("GET", version_url, nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", user_agent)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf(err.Error())
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	return strings.TrimRight(string(body), "\r\n"), nil
-}
-func IsLastVersion() bool {
-
-	last_version, err := GetLastVersion()
-	if err != nil {
-		return true
-	}
-	float_last_version, err := strconv.ParseFloat(last_version, 64)
-	float_version, err := strconv.ParseFloat(version, 64)
-	if float_last_version > float_version {
-		return false
-	}
-	return true
 }

@@ -538,11 +538,12 @@ func CmdListStacks() error {
 
 func CmdUpdate() error {
 	if IsLastVersion() == false {
+		//input_update := "yes"
+		//fmt.Printf(color("Update CodePicnic CLI? [yes]: ", "prompt"))
+		//reader_update := bufio.NewReader(os.Stdin)
+		//input, _ := reader_update.ReadString('\n')
+		//input_update = strings.TrimRight(input, "\r\n")
 		input_update := "yes"
-		fmt.Printf(color("Update CodePicnic CLI? [yes]: ", "prompt"))
-		reader_update := bufio.NewReader(os.Stdin)
-		input, _ := reader_update.ReadString('\n')
-		input_update = strings.TrimRight(input, "\r\n")
 		if input_update == "yes" {
 			file_tmp := "/tmp/codepicnic-" + version
 			cp_bin, _ := osext.Executable()
@@ -566,6 +567,8 @@ func CmdUpdate() error {
 			defer out.Close()
 
 			// Get the data
+			last_version, _ := GetLastVersion()
+			fmt.Printf(color("Downloading last version (%s) ...", "response"), last_version)
 			resp, err := http.Get(repo_url + "/binaries/" + runtime.GOOS + "/codepicnic")
 			if err != nil {
 				return err
@@ -585,8 +588,19 @@ func CmdUpdate() error {
 			}
 			os.Chown(cp_bin, int(fi_sys.Uid), int(fi_sys.Gid))
 			os.Chmod(cp_bin, fi.Mode())
+			fmt.Printf(color(" Done.\n", "response"))
 
 		}
 	}
 	return nil
+}
+
+func CmdCheck() {
+	if IsFirstCheck() == true {
+		if IsLastVersion() == false {
+			last_version, _ := GetLastVersion()
+			fmt.Printf(color("Version %s is out! Update your version with 'codepicnic update'\n", "response"), last_version)
+		}
+	}
+
 }
