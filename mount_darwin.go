@@ -683,7 +683,7 @@ func (d *Dir) RemoveDir(dir string) (err error) {
 	if resp.StatusCode == 401 {
 		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
-	logrus.Infof("Remove dir End %s", d.path+" / "+dir)
+	//logrus.Infof("Remove dir End %s", d.path+" / "+dir)
 	return nil
 }
 

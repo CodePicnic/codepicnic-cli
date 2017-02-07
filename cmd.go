@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -542,17 +544,29 @@ func CmdUpdate() error {
 		input, _ := reader_update.ReadString('\n')
 		input_update = strings.TrimRight(input, "\r\n")
 		if input_update == "yes" {
-			// Create the file
 			file_tmp := "/tmp/codepicnic-" + version
 			cp_bin, _ := osext.Executable()
+
+			file, err := os.Open(cp_bin)
+			if err != nil {
+				return err
+			}
+			fi, err := file.Stat()
+			if err != nil {
+				return err
+			}
+			fi_sys := fi.Sys().(*syscall.Stat_t)
+
+			// Create the file
 			out, err := os.Create(file_tmp)
+
 			if err != nil {
 				return err
 			}
 			defer out.Close()
 
 			// Get the data
-			resp, err := http.Get(repo_url + "/binaries/linux/codepicnic")
+			resp, err := http.Get(repo_url + "/binaries/" + runtime.GOOS + "/codepicnic")
 			if err != nil {
 				return err
 			}
@@ -569,6 +583,8 @@ func CmdUpdate() error {
 			if err != nil {
 				return err
 			}
+			os.Chown(cp_bin, int(fi_sys.Uid), int(fi_sys.Gid))
+			os.Chmod(cp_bin, fi.Mode())
 
 		}
 	}

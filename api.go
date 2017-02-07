@@ -519,8 +519,6 @@ func IsLastVersion() bool {
 	}
 	float_last_version, err := strconv.ParseFloat(last_version, 64)
 	float_version, err := strconv.ParseFloat(version, 64)
-	fmt.Println(float_last_version)
-	fmt.Println(float_version)
 	if float_last_version > float_version {
 		return false
 	}
