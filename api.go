@@ -511,13 +511,18 @@ func GetLastVersion() (string, error) {
 	body, err := ioutil.ReadAll(resp.Body)
 	return strings.TrimRight(string(body), "\r\n"), nil
 }
-func IsLastVersion() (bool, error) {
+func IsLastVersion() bool {
 
 	last_version, err := GetLastVersion()
 	if err != nil {
-		return true, err
+		return true
 	}
 	float_last_version, err := strconv.ParseFloat(last_version, 64)
+	float_version, err := strconv.ParseFloat(version, 64)
 	fmt.Println(float_last_version)
-	return false, nil
+	fmt.Println(float_version)
+	if float_last_version > float_version {
+		return false
+	}
+	return true
 }

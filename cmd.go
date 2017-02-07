@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/kardianos/osext"
 	"github.com/ryanuber/columnize"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -533,10 +535,42 @@ func CmdListStacks() error {
 }
 
 func CmdUpdate() error {
-	new_version, err := GetLastVersion()
-	if err != nil {
-		return err
+	if IsLastVersion() == false {
+		input_update := "yes"
+		fmt.Printf(color("Update CodePicnic CLI? [yes]: ", "prompt"))
+		reader_update := bufio.NewReader(os.Stdin)
+		input, _ := reader_update.ReadString('\n')
+		input_update = strings.TrimRight(input, "\r\n")
+		if input_update == "yes" {
+			// Create the file
+			file_tmp := "/tmp/codepicnic-" + version
+			cp_bin, _ := osext.Executable()
+			out, err := os.Create(file_tmp)
+			if err != nil {
+				return err
+			}
+			defer out.Close()
+
+			// Get the data
+			resp, err := http.Get(repo_url + "/binaries/linux/codepicnic")
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+
+			// Writer the body to file
+			_, err = io.Copy(out, resp.Body)
+			if err != nil {
+				return err
+			}
+
+			err = os.Rename(file_tmp, cp_bin)
+
+			if err != nil {
+				return err
+			}
+
+		}
 	}
-	fmt.Println(new_version)
 	return nil
 }

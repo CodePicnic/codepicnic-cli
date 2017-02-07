@@ -44,6 +44,7 @@ var config_dir = getHomeDir() + string(filepath.Separator) + cfg_dir
 var msg_rwperms = "Make sure you have read and write permissions to " + config_dir + " directory."
 
 var consoles_short_url = "https://codp.in/c/"
+var repo_url = "http://deb.codepicnic.com"
 
 // https://github.com/docker/docker/blob/master/cli/command/container/cp.go
 func splitContainerFromPath(arg string) (container, path string) {
