@@ -939,8 +939,8 @@ func IsVimFile(file string) bool {
 	isSwapFile, _ := regexp.MatchString(`^.+?\.sw.+$`, file)
 	isBackupFile, _ := regexp.MatchString(`^.+?~$`, file)
 	is4913, _ := regexp.MatchString(`^4913$`, file)
-	isDotUnderscore, _ := regexp.MatchString(`^\._.+?$`, file)
-	if isSwapFile == false && isBackupFile == false && is4913 == false && isDotUnderscore {
+	//isDotUnderscore, _ := regexp.MatchString(`^\._.+?$`, file)
+	if isSwapFile == false && isBackupFile == false && is4913 == false {
 		return false
 	} else {
 		return true
