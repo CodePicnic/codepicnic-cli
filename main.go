@@ -665,9 +665,8 @@ func main() {
 			},
 		},
 		{
-			Name:   "update",
-			Usage:  "update CodePicnic",
-			Hidden: true,
+			Name:  "update",
+			Usage: "update CodePicnic",
 			Action: func(c *cli.Context) error {
 				CmdUpdate()
 				return nil

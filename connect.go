@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"github.com/buger/goterm"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/promise"
@@ -25,7 +26,6 @@ func holdHijackedConnection(tty bool, inputStream io.ReadCloser, outputStream, e
 	//outputStream = os.Stdout
 	//inputStream = os.Stdin
 	inFd, isTerminalIn := term.GetFdInfo(inputStream)
-	//winsize, _ := term.GetWinsize(inFd)
 	//fmt.Printf("%+v", winsize)
 	//terminalHeight := goterm.Height()
 	//terminalWidth := goterm.Width()
@@ -106,7 +106,12 @@ func ProxyConsole(access_token string, container_name string) {
 	//fmt.Println(r.ID)
 
 	//resp, err := cli.client.ContainerExecAttach(execID, *execConfig)
+	resize_options := types.ResizeOptions{
+		Height: uint(goterm.Height()),
+		Width:  uint(goterm.Width()),
+	}
 	aResp, err := cli.ContainerExecAttach(context.Background(), r.ID, types.ExecConfig{Tty: true, Cmd: []string{"bash"}, Env: nil, AttachStdin: true, AttachStderr: true, AttachStdout: true, Detach: false})
+	cli.ContainerExecResize(context.Background(), r.ID, resize_options)
 	// Interactive exec requested.
 	var (
 		out, stderr io.Writer
