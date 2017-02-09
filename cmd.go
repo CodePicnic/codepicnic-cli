@@ -306,7 +306,9 @@ func CmdInspectConsole(console_id string) error {
 		fmt.Printf(color("This is not a valid console. Please try again \n", "error"))
 	} else {
 		fmt.Printf(color("Console Id: %s \n", "response"), console.ContainerName)
-		fmt.Printf(color("Console Title: %s \n", "response"), console.Title)
+		if console.Title != "" {
+			fmt.Printf(color("Console Title: %s \n", "response"), console.Title)
+		}
 		fmt.Printf(color("Console Type: %s \n", "response"), console.ContainerType)
 		fmt.Printf(color("Console URL: %s \n", "response"), consoles_short_url+console.Permalink)
 		fmt.Printf(color("External URL: %s \n", "response"), "https://"+console.ContainerName+"-"+console.ContainerType+".codepicnic.com")
