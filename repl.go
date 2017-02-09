@@ -322,6 +322,15 @@ func Repl(c *cli.Context) {
 				}
 			case "update":
 				CmdUpdate()
+			case "inspect":
+				if len(inputArgs) < 2 {
+					console_id = GetConsoleFromPrompt()
+				} else if len(inputArgs) > 2 {
+					//Error print help
+				} else {
+					console_id = inputArgs[1]
+				}
+				CmdInspectConsole(console_id)
 			default:
 				fmt.Println(color("Command not recognized. Have you tried 'help'?", "response"))
 			}
