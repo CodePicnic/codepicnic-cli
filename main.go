@@ -517,6 +517,17 @@ func main() {
 			},
 		},
 		{
+			Name:      "inspect",
+			Usage:     "inspect a console",
+			ArgsUsage: "[CONSOLE_ID]",
+			Action: func(c *cli.Context) error {
+				CmdValidateCredentials()
+				CmdInspectConsole(c.Args()[0])
+				return nil
+			},
+		},
+
+		{
 			Name: "list",
 			//Aliases: []string{"ls"},
 			Usage:     "list consoles",

@@ -401,6 +401,16 @@ func GetStackInfo(access_token string, mystack string) (StackJson, error) {
 	}
 	return stack, nil
 }
+func GetConsoleInfo(access_token string, myconsole string) (ConsoleJson, error) {
+	var console ConsoleJson
+	consoles_list, _ := ListConsoles(access_token)
+	for _, console := range consoles_list {
+		if console.ContainerName == myconsole {
+			return console, nil
+		}
+	}
+	return console, nil
+}
 
 func CreateConsole(access_token string, console_extra ConsoleExtra) (string, string, error) {
 
