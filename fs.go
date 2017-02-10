@@ -20,7 +20,7 @@ import (
 	//"strconv"
 	"strings"
 	"sync"
-	//"syscall"
+	"syscall"
 	"time"
 )
 
@@ -78,17 +78,17 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 type File struct {
-	dir      *Dir
-	name     string
-	path     string
-	basedir  string
-	mime     string
-	mu       sync.Mutex
-	data     []byte
-	writers  uint
-	size     uint64
-	swap     bool
-	readlock bool
+	dir  *Dir
+	name string
+	path string
+	//basedir string
+	mime    string
+	mu      sync.Mutex
+	data    []byte
+	writers uint
+	size    uint64
+	//swap     bool
+	//readlock bool
 }
 
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -351,9 +351,12 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 var _ fs.NodeOpener = (*File)(nil)
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	logrus.Infof("Open f.dir.nodemap %+v", f.dir.nodemap[f.name])
 	resp.Flags |= fuse.OpenKeepCache
 	return f, nil
 }
+
+var _ fs.Handle = (*File)(nil)
 
 var _ fs.HandleReader = (*File)(nil)
 
@@ -362,7 +365,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	logrus.Infof("Read f.dir.nodemap %+v", f.dir.nodemap[f.name])
 
 	if f.dir.nodemap[f.name].offline == true {
-		content = "codepicnic test file"
+		content = string(f.data)
 	} else {
 		content, _ = f.ReadFile()
 	}
@@ -375,7 +378,6 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	           t, err = f.ReadFile()
 	       }
 	   }*/
-	logrus.Infof("Read HandleRead %+v", []byte(content))
 	fuseutil.HandleRead(req, resp, []byte(content))
 	return nil
 }
@@ -419,4 +421,130 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		nodemap: make(map[string]Node),
 	}
 	return n, nil
+}
+
+var _ = fs.NodeCreater(&Dir{})
+
+func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
+	var new_file string
+	ch := make(chan error)
+	path := req.Name
+	if d.path != "" {
+		path = d.path + "/" + path
+	}
+	f := &File{
+		name:    req.Name,
+		path:    path,
+		writers: 0,
+		dir:     d,
+		//basedir:  d.path,
+		//readlock: false,
+	}
+	/*cache_key := d.fs.container + ":mimemap:" + d.path
+	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
+	cache_key = d.fs.container + ":" + d.path
+	cp_cache.Get(cache_key)*/
+	var n Node
+	n.name = req.Name
+	n.dtype = fuse.DT_File
+	if IsOffline(req.Name) == true {
+		n.offline = true
+		n.size = 0
+		d.fs.ltree[d.path] = append(d.fs.ltree[d.path], n)
+	} else {
+		n.offline = false
+		if d.path == "" {
+			new_file = req.Name
+		} else {
+			new_file = d.path + "/" + req.Name
+		}
+		//err := d.CreateFile(new_file)
+		go d.TouchFile(new_file, ch)
+	}
+
+	d.nodemap[req.Name] = n
+	return f, f, nil
+}
+
+const maxInt = int(^uint(0) >> 1)
+
+var _ = fs.HandleWriter(&File{})
+
+func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
+	//logrus.Infof("Write f.dir.nodemap %+v", f.dir.nodemap[f.name])
+	//logrus.Infof("Write req.Offset %i ", req.Offset)
+	//logrus.Infof("Write req.Data %+v %i", req.Data, len(req.Data))
+	logrus.Infof("Write f.data %s", string(f.data))
+	f.writers = 1
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// expand the buffer if necessary
+	newLen := req.Offset + int64(len(req.Data))
+	if newLen > int64(maxInt) {
+		return fuse.Errno(syscall.EFBIG)
+	}
+
+	//use file size is better than len(f.data)
+	if newLen := int(newLen); newLen > len(f.data) {
+		f.data = append(f.data, make([]byte, newLen-len(f.data))...)
+	} else if newLen < len(f.data) {
+		f.data = append([]byte(nil), req.Data[:newLen]...)
+	}
+
+	_ = copy(f.data[req.Offset:], req.Data)
+	resp.Size = len(req.Data)
+	f.size = uint64(len(req.Data))
+	var n Node
+	n.name = f.name
+	n.dtype = fuse.DT_File
+	n.offline = f.dir.nodemap[f.name].offline
+	n.size = f.size
+	f.dir.nodemap[f.name] = n
+	logrus.Infof("Write f.dir.nodemap %+v", f.dir.nodemap[f.name])
+	logrus.Infof("Write f.size %+v", f.size)
+	return nil
+}
+
+var _ = fs.HandleFlusher(&File{})
+
+func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
+	if f.writers == 0 {
+		// Read-only handles also get flushes. Make sure we don't
+		// overwrite valid file contents with a nil buffer.
+		return nil
+	}
+
+	if f.dir.nodemap[f.name].offline == true {
+	} else {
+
+		//err := f.UploadFile()
+		f.UploadFile()
+		/*
+			if err != nil {
+				if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+					//Probably the token expired, try again
+					//logrus.Infof("Token expired, generating a new one")
+					f.fs.token, err = GetTokenAccess()
+					f.UploadFile()
+				}
+			}*/
+
+	}
+	return nil
+}
+
+var _ = fs.HandleReleaser(&File{})
+
+func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
+	//logrus.Infof("Release %v", f.name)
+	//logrus.Infof("Release %v %v", f.name, f.writers)
+	if req.Flags.IsReadOnly() {
+		// we don't need to track read-only handles
+		//  return nil
+	}
+	f.writers = 0
+	//f.UploadFile()
+
+	return nil
 }
