@@ -34,38 +34,38 @@ type FS struct {
 	token      string
 	file       *File
 	mountpoint string
-	ltree      []LDir
+	ltree      map[string][]Node
 }
 
 func (f *FS) Root() (fs.Node, error) {
+	logrus.Infof("FS.Root %v\n", f)
+	f.ltree = make(map[string][]Node)
 	node_dir := &Dir{
 		fs:      f,
 		path:    "",
-		mime:    "inode/directory",
-		mimemap: make(map[string]string),
-		sizemap: make(map[string]uint64),
+		nodemap: make(map[string]Node),
+		//mime: "inode/directory",
+		//mimemap: make(map[string]string),
+		//sizemap: make(map[string]uint64),
 	}
-	var ltree []Ldir
-	fs.ltree = ltree
+	f.ltree[""] = SetDummyLDir()
 	return node_dir, nil
 }
 
-type LDir struct {
-	Nodes []LocalNode
-	Path  string
-}
-
-type LocalNode struct {
-	Name string
-	Type fuse.DirentType
+type Node struct {
+	name    string
+	size    uint64
+	dtype   fuse.DirentType
+	offline bool
 }
 
 type Dir struct {
-	fs      *FS
-	path    string
-	mime    string
-	mimemap map[string]string
-	sizemap map[string]uint64
+	fs   *FS
+	path string
+	//mime    string
+	nodemap map[string]Node
+	//mimemap map[string]string
+	//sizemap map[string]uint64
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -127,6 +127,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 			if d.sizemap == nil {
 				d.sizemap = make(map[string]uint64)
 			}*/
+			var n Node
 			path := f.name
 			if d.path != "" {
 				path = d.path + "/" + path
@@ -138,16 +139,27 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 				inode.Type = fuse.DT_Dir
 			} else {
 				inode.Type = fuse.DT_File
+				n.size = f.size
 			}
 			inode.Name = f.name
+			n.name = inode.Name
+			n.dtype = inode.Type
+			n.offline = false
+
+			d.nodemap[f.name] = n
 			res = append(res, inode)
 		}
 	}
-	for _, ln := range SetDummyLDir().Nodes {
-		inode.Type = ln.Type
-		inode.Name = ln.Name
-		res = append(res, inode)
+	//Only offline nodes from ltree are added to the Dirent
+	for _, ln := range d.fs.ltree[d.path] {
+		if ln.offline == true {
+			inode.Type = ln.dtype
+			inode.Name = ln.name
+			res = append(res, inode)
+			d.nodemap[ln.name] = ln
+		}
 	}
+
 	//cache_key := d.fs.container + ":mimemap:" + d.path
 	//cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
 	return res, nil
@@ -239,23 +251,16 @@ func UnmountConsole(container_name string) error {
 	return nil
 }
 
-func SetDummyLDir() LDir {
+func SetDummyLDir() []Node {
 
-	var ld LDir
-	var n LocalNode
-	n.Name = ".codepicnic.tmp"
-	n.Type = fuse.DT_File
-	ld.Nodes = append(ld.Nodes, n)
-	n.Name = "codepicnic.swp"
-	n.Type = fuse.DT_File
-	ld.Nodes = append(ld.Nodes, n)
-	return ld
+	var n Node
+	var ln []Node
+	n.name = ".codepicnic"
+	n.dtype = fuse.DT_File
+	n.offline = true
+	ln = append(ln, n)
+	return ln
 
-}
-
-func ListLocalFiles(container_name string, path string) ([]File, error) {
-	var FileCollection []File
-	return FileCollection, nil
 }
 
 func ListFiles(access_token string, container_name string, path string) ([]File, error) {
@@ -299,4 +304,88 @@ func ListFiles(access_token string, container_name string, path string) ([]File,
 	//cp_cache.Set(cache_key, FileCollection, cache.DefaultExpiration)
 	//}
 	return FileCollection, nil
+}
+
+var _ = fs.NodeRequestLookuper(&Dir{})
+
+func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
+	/*
+		if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
+			child := &File{
+				size: 0,
+				name: req.Name,
+			}
+			return child, nil
+		}*/
+	path := req.Name
+	if d.path != "" {
+		path = d.path + "/" + path
+	}
+	/*
+
+		cache_key := d.fs.container + ":mimemap:" + d.path
+		cache_data, _ := cp_cache.Get(cache_key)
+	*/
+	/*
+		lookup_mimemap := make(map[string]string)
+		if len(d.mimemap) == 0 && cache_data != nil {
+			lookup_mimemap = cache_data.(map[string]string)
+		fus} else {
+			lookup_mimemap = d.mimemap
+		}
+		if lookup_mimemap[req.Name] != "" {
+			switch {
+			case lookup_mimemap[req.Name] == "inode/directory":
+				child := &Dir{
+					fs:      d.fs,
+					path:    path,
+					mimemap: make(map[string]string),
+					sizemap: make(map[string]uint64),
+				}
+				return child, nil
+			default:
+				child := &File{
+					size:       d.sizemap[req.Name],
+					name:       req.Name,
+					path:       path,
+					mime:       d.mimemap[req.Name],
+					basedir:    d.path,
+					fs:         d.fs,
+					dir:        d,
+					mountpoint: d.mountpoint,
+					readlock:   false,
+				}
+				return child, nil
+			}
+		}
+	*/
+	node := d.nodemap[req.Name]
+	if (Node{}) != d.nodemap[req.Name] {
+		switch {
+		case node.dtype == fuse.DT_Dir:
+			logrus.Infof("Lookup %v\n", node)
+			child := &Dir{
+				fs:      d.fs,
+				path:    path,
+				nodemap: make(map[string]Node),
+			}
+			return child, nil
+		case node.dtype == fuse.DT_File:
+			child := &File{
+				size: node.size,
+				name: req.Name,
+				path: path,
+				//mime:       d.mimemap[req.Name],
+				//basedir:    d.path,
+				//fs:  d.fs,
+				dir: d,
+				//mountpoint: d.mountpoint,
+				//readlock:   false,
+			}
+			return child, nil
+		default:
+			return nil, fuse.ENOENT
+		}
+	}
+	return nil, fuse.ENOENT
 }
