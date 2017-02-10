@@ -3,18 +3,18 @@ package main
 import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	//"bazil.org/fuse/fuseutil"
+	"bazil.org/fuse/fuseutil"
 	//"bytes"
 	//"errors"
 	"fmt"
-	"github.com/Jeffail/gabs"
+	//"github.com/Jeffail/gabs"
 	"github.com/Sirupsen/logrus"
 	//"github.com/patrickmn/go-cache"
 	"golang.org/x/net/context"
 	//"io"
-	"io/ioutil"
+	//"io/ioutil"
 	//"mime/multipart"
-	"net/http"
+	//"net/http"
 	"os"
 	//"regexp"
 	//"strconv"
@@ -258,52 +258,10 @@ func SetDummyLDir() []Node {
 	n.name = ".codepicnic"
 	n.dtype = fuse.DT_File
 	n.offline = true
+	n.size = 21
 	ln = append(ln, n)
 	return ln
 
-}
-
-func ListFiles(access_token string, container_name string, path string) ([]File, error) {
-	//cache_key := container_name + ":" + path
-	var FileCollection []File
-	/*FileCollectionCache, found := cp_cache.Get(cache_key)
-	if found {
-		FileCollection = FileCollectionCache.([]File)
-	} else {*/
-
-	cp_consoles_url := site + "/api/consoles/" + container_name + "/files?path=" + path
-	req, err := http.NewRequest("GET", cp_consoles_url, nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+access_token)
-	req.Header.Set("User-Agent", user_agent)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		logrus.Errorf("List files %v", err)
-		panic(err)
-	}
-	defer resp.Body.Close()
-	/*
-		if resp.StatusCode == 401 {
-			return FileCollection, errors.New(ERROR_NOT_AUTHORIZED)
-		}*/
-
-	body, err := ioutil.ReadAll(resp.Body)
-	jsonFiles, err := gabs.ParseJSON(body)
-	jsonPaths, _ := jsonFiles.ChildrenMap()
-	for key, child := range jsonPaths {
-		var jsonFile File
-		jsonFile.name = string(key)
-
-		jsonFile.path = child.Path("path").Data().(string)
-		jsonFile.mime = child.Path("type").Data().(string)
-		jsonFile.size = uint64(child.Path("size").Data().(float64))
-		FileCollection = append(FileCollection, jsonFile)
-
-	}
-	//cp_cache.Set(cache_key, FileCollection, cache.DefaultExpiration)
-	//}
-	return FileCollection, nil
 }
 
 var _ = fs.NodeRequestLookuper(&Dir{})
@@ -388,4 +346,77 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 	}
 	return nil, fuse.ENOENT
+}
+
+var _ fs.NodeOpener = (*File)(nil)
+
+func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	resp.Flags |= fuse.OpenKeepCache
+	return f, nil
+}
+
+var _ fs.HandleReader = (*File)(nil)
+
+func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
+	var content string
+	logrus.Infof("Read f.dir.nodemap %+v", f.dir.nodemap[f.name])
+
+	if f.dir.nodemap[f.name].offline == true {
+		content = "codepicnic test file"
+	} else {
+		content, _ = f.ReadFile()
+	}
+	/*
+	   if err != nil {
+	       if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+	           //Probably the token expired, try again
+	           //logrus.Infof("Token expired, generating a new one")
+	           f.fs.token, err = GetTokenAccess()
+	           t, err = f.ReadFile()
+	       }
+	   }*/
+	logrus.Infof("Read HandleRead %+v", []byte(content))
+	fuseutil.HandleRead(req, resp, []byte(content))
+	return nil
+}
+
+var _ = fs.NodeMkdirer(&Dir{})
+
+func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
+	var new_dir string
+	path := req.Name
+	if d.path != "" {
+		path = d.path + "/" + path
+	}
+	if d.path == "/" || d.path == "" {
+		new_dir = req.Name
+	} else {
+		new_dir = d.path + "/" + req.Name
+	}
+	//err := d.CreateDir(new_dir)
+	d.CreateDir(new_dir)
+	/*
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+				//Probably the token expired, try again
+				//logrus.Infof("Token expired, generating a new one")
+				d.fs.token, err = GetTokenAccess()
+				d.CreateDir(new_dir)
+			}
+		}*/
+	/*cache_key := d.fs.container + ":mimemap:" + d.path
+	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)*/
+	//add new path into the ltree
+	d.fs.ltree[path] = make([]Node, 0)
+	//add new local Node into the nodemap
+	var ln Node
+	ln.name = req.Name
+	ln.dtype = fuse.DT_Dir
+	d.nodemap[req.Name] = ln
+	n := &Dir{
+		fs:      d.fs,
+		path:    path,
+		nodemap: make(map[string]Node),
+	}
+	return n, nil
 }
