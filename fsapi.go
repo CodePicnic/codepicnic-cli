@@ -115,6 +115,8 @@ func (d *Dir) CreateDir(newdir string) (err error) {
 
 func IsOffline(file string) bool {
 	var is_offline bool
+	//Users may see what appear to be random, zero-byte files appear in their home directory, named 4913, 5036, 5159, 5282 (increasing at increments of 123.)
+
 	offline_regexp := []string{`^.+?\.sw.+$`, `^.+?~$`, `^4913$`, `^\._.+?$`}
 	for _, reg := range offline_regexp {
 		is_offline, _ = regexp.MatchString(reg, file)
@@ -125,7 +127,8 @@ func IsOffline(file string) bool {
 	return false
 }
 
-func (d *Dir) TouchFile(file string, ch chan error) (err error) {
+//func (d *Dir) TouchFile(file string, ch chan error) (err error) {
+func (d *Dir) TouchFile(file string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
 	cp_payload = ` { "commands": "touch ` + file + `" }`
@@ -140,15 +143,15 @@ func (d *Dir) TouchFile(file string, ch chan error) (err error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 401 {
-		ch <- errors.New(ERROR_NOT_AUTHORIZED)
+		//ch <- errors.New(ERROR_NOT_AUTHORIZED)
 		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
 	if err != nil {
 		logrus.Errorf("CreateFile %v", err)
-		ch <- err
+		//ch <- err
 		return err
 	}
-	ch <- err
+	//ch <- err
 	return nil
 }
 
@@ -200,5 +203,127 @@ func (f *File) UploadFile() (err error) {
 	}
 	/*cache_key := f.dir.fs.container + ":" + f.dir.path
 	cp_cache.Delete(cache_key)*/
+	return
+}
+
+//need to merge RemoveDir and RemoveFile
+func (d *Dir) RemoveFile(file string) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
+	var cp_payload string
+	if d.path == "" {
+		cp_payload = ` { "commands": "rm ` + file + `" }`
+	} else {
+		cp_payload = ` { "commands": "rm ` + d.path + "/" + file + `" }`
+	}
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if err != nil {
+		logrus.Errorf("RemoveFile %v", err)
+		return err
+	}
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	//logrus.Infof("Remove file End %s", d.path+" / "+file)
+	return nil
+}
+
+func (d *Dir) RemoveDir(dir string) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
+	var cp_payload string
+	//logrus.Infof("Remove file %s", d.path+" / "+file)
+	if dir == "" {
+		//Avoid remove base directory
+		//logrus.Infof("RemoveDir empty dir %s", dir)
+		//cp_payload = ` { "commands": "rm ` + dir + `" }`
+		return nil
+	} else if d.path == "" {
+		//logrus.Infof("RemoveDir empty d.path %s", d.path)
+		cp_payload = ` { "commands": "rm -rf /app/` + dir + `" }`
+	} else {
+		cp_payload = ` { "commands": "rm -rf /app/` + d.path + "/" + dir + `" }`
+	}
+	//logrus.Infof("RemoveDir payload %s", cp_payload)
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if err != nil {
+		logrus.Errorf("RemoveDir %v", err)
+		return err
+	}
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	//logrus.Infof("Remove dir End %s", d.path+" / "+dir)
+	return nil
+}
+
+func (f *File) UploadAsyncFile(ch chan error) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + f.dir.fs.container + "/upload_file"
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+	temp_file, err := ioutil.TempFile(os.TempDir(), "cp_")
+	err = ioutil.WriteFile(temp_file.Name(), f.data, 0666)
+	if err != nil {
+		logrus.Errorf("Writint temp %v", err)
+		ch <- err
+		return err
+	}
+	fw, err := w.CreateFormFile("file", temp_file.Name())
+	if err != nil {
+		logrus.Errorf("CreateFormFile %v", err)
+		ch <- err
+		return err
+	}
+	if _, err = io.Copy(fw, temp_file); err != nil {
+		return
+	}
+	if fw, err = w.CreateFormField("path"); err != nil {
+		return
+	}
+	if _, err = fw.Write([]byte("/app/" + f.dir.path + "/" + f.name)); err != nil {
+		return
+	}
+	w.Close()
+	req, err := http.NewRequest("POST", cp_consoles_url, &b)
+	if err != nil {
+		logrus.Errorf("Upload Request %v \n", err)
+		ch <- err
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+f.dir.fs.token)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("User-Agent", user_agent)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if err != nil {
+		ch <- err
+		return err
+	}
+	if resp.StatusCode == 401 {
+		ch <- errors.New(ERROR_NOT_AUTHORIZED)
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	if err != nil {
+		logrus.Errorf("Remove temp_file %v", err)
+	}
+	/*cache_key := f.dir.fs.container + ":" + f.dir.path
+	cp_cache.Delete(cache_key)*/
+	ch <- err
 	return
 }

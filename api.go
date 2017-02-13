@@ -21,6 +21,7 @@ const ERROR_EMPTY_CREDENTIALS = "No Credentials"
 const ERROR_EMPTY_TOKEN = "No Token"
 const ERROR_INVALID_TOKEN = "Invalid Token"
 const ERROR_USAGE_EXCEEDED = "Usage Exceeded"
+const ERROR_CACHE_NOT_FOUND = "Cache not Found"
 
 const TOKEN_LEN = 64
 
