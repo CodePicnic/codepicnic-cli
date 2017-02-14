@@ -277,44 +277,6 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	if d.path != "" {
 		path = d.path + "/" + path
 	}
-	/*
-
-		cache_key := d.fs.container + ":mimemap:" + d.path
-		cache_data, _ := cp_cache.Get(cache_key)
-	*/
-	/*
-		lookup_mimemap := make(map[string]string)
-		if len(d.mimemap) == 0 && cache_data != nil {
-			lookup_mimemap = cache_data.(map[string]string)
-		fus} else {
-			lookup_mimemap = d.mimemap
-		}
-		if lookup_mimemap[req.Name] != "" {
-			switch {
-			case lookup_mimemap[req.Name] == "inode/directory":
-				child := &Dir{
-					fs:      d.fs,
-					path:    path,
-					mimemap: make(map[string]string),
-					sizemap: make(map[string]uint64),
-				}
-				return child, nil
-			default:
-				child := &File{
-					size:       d.sizemap[req.Name],
-					name:       req.Name,
-					path:       path,
-					mime:       d.mimemap[req.Name],
-					basedir:    d.path,
-					fs:         d.fs,
-					dir:        d,
-					mountpoint: d.mountpoint,
-					readlock:   false,
-				}
-				return child, nil
-			}
-		}
-	*/
 	d.GetNodemap()
 	node := d.nodemap[req.Name]
 	if (Node{}) != d.nodemap[req.Name] {
@@ -354,8 +316,13 @@ var _ fs.NodeOpener = (*File)(nil)
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
 	logrus.Debug("Open %+v\n", req)
-	//resp.Flags |= fuse.OpenDirectIO
+	logrus.Info("Open ",f.dir.path, " ", f.name)
+	if runtime.GOOS == "darwin" {
+	resp.Flags |= fuse.OpenDirectIO
+        } else {
 	resp.Flags |= fuse.OpenKeepCache
+ 
+        } 
 	return f, nil
 }
 
@@ -365,6 +332,7 @@ var _ fs.HandleReader = (*File)(nil)
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	logrus.Debug(req)
+	logrus.Info("Read ",f.dir.path, " ", f.name)
 	data, err := f.GetDataFromCache()
 	if err != nil {
 		logrus.Debug("Read cache f.data ", string(data))
@@ -405,6 +373,7 @@ var _ = fs.NodeMkdirer(&Dir{})
 
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	logrus.Debug("Mkdir %+v\n", req)
+	logrus.Info("Create ", d.path, req.Name)
 	var new_dir string
 	path := req.Name
 	if d.path != "" {
@@ -448,6 +417,7 @@ var _ = fs.NodeCreater(&Dir{})
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	logrus.Debug("Create %+v\n", req)
+	logrus.Info("Create ", d.path, req.Name)
 	//ch := make(chan error)
 	path := req.Name
 	if d.path != "" {
@@ -490,6 +460,10 @@ var _ = fs.HandleWriter(&File{})
 
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	logrus.Debug("Write %+v\n", req)
+	logrus.Infof("Write ", f.name)
+	logrus.Infof("Write ", f.size)
+	logrus.Infof("Write ", string(req.Data))
+	logrus.Infof("Write ", req.Offset)
 	f.writers = 1
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -500,6 +474,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	if newLen > int64(maxInt) {
 		return fuse.Errno(syscall.EFBIG)
 	}
+	logrus.Infof("Write ", newLen)
 
 	//use file size is better than len(f.data)
 	if newLen := int(newLen); newLen > len(f.data) {
@@ -507,6 +482,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	} else if newLen < len(f.data) {
 		f.data = append([]byte(nil), req.Data[:newLen]...)
 	}
+	logrus.Infof("Write ", f.size)
 
 	//copy req.Data to f.data
 	_ = copy(f.data[req.Offset:], req.Data)
@@ -630,7 +606,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 }
 
 func (fsys *FS) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.StatfsResponse) error {
-	logrus.Debug("Statfs %+v\n", req)
+	logrus.Debug("Statfs ", req)
 	resp.Bavail = 1<<43 + 5
 	resp.Bfree = 1<<43 + 5
 	resp.Files = 1<<59 + 11
@@ -640,4 +616,29 @@ func (fsys *FS) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 	resp.Bsize = 1 << 15
 	return nil
 
+}
+
+var _ = fs.NodeSetattrer(&File{})
+
+func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+	logrus.Debug("Setattr ", req)
+	logrus.Info("Setattr ", req.Size)
+	logrus.Info("Setattr ", req.Valid.Size())
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if req.Valid.Size() {
+		if req.Size > uint64(maxInt) {
+			return fuse.Errno(syscall.EFBIG)
+		}
+		newLen := int(req.Size)
+		switch {
+		case newLen > len(f.data):
+			f.data = append(f.data, make([]byte, newLen-len(f.data))...)
+		case newLen < len(f.data):
+			f.data = f.data[:newLen]
+		}
+	}
+	f.SaveDataToCache()
+	logrus.Info("Setattr ", len(f.data))
+	return nil
 }

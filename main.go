@@ -172,7 +172,8 @@ func init() {
 	//defer log_fh.Close()
 	logrus.SetOutput(log_fh)
 	//logrus.SetLevel(log.WarnLevel)
-	logrus.SetLevel(logrus.DebugLevel)
+	//logrus.SetLevel(logrus.DebugLevel)
+	logrus.SetLevel(logrus.InfoLevel)
 }
 
 func main() {
