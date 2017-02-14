@@ -317,7 +317,6 @@ var _ fs.NodeOpener = (*File)(nil)
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
 	logrus.Debug("Open %+v\n", req)
-	logrus.Info("Open ", f.dir.path, " ", f.name)
 	//os x can't handle files truncated
 	if runtime.GOOS == "darwin" {
 		resp.Flags |= fuse.OpenDirectIO
@@ -468,7 +467,6 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	if newLen > int64(maxInt) {
 		return fuse.Errno(syscall.EFBIG)
 	}
-	logrus.Infof("Write ", newLen)
 
 	//use file size is better than len(f.data)
 	if newLen := int(newLen); newLen > len(f.data) {
@@ -615,8 +613,6 @@ var _ = fs.NodeSetattrer(&File{})
 
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	logrus.Debug("Setattr ", req)
-	logrus.Info("Setattr ", req.Size)
-	logrus.Info("Setattr ", req.Valid.Size())
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if req.Valid.Size() {
@@ -632,6 +628,12 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		}
 	}
 	f.SaveDataToCache()
-	logrus.Info("Setattr ", len(f.data))
+	return nil
+}
+
+var _ = fs.NodeSetxattrer(&File{})
+
+func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
+	logrus.Debug("Setxattr ", req)
 	return nil
 }
