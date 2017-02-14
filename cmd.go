@@ -618,6 +618,7 @@ func CmdUpdate() error {
 }
 
 func CmdCheck() {
+	CreateConfigDir()
 	if IsFirstCheck() == true {
 		if IsLastVersion() == false {
 			last_version, _ := GetLastVersion()
