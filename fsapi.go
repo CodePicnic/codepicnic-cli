@@ -121,15 +121,12 @@ func (d *Dir) TouchFile(file string) (err error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 401 {
-		ch <- errors.New(ERROR_NOT_AUTHORIZED)
 		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
 	if err != nil {
 		logrus.Errorf("CreateFile %v", err)
-		//ch <- err
 		return err
 	}
-	//ch <- err
 	return nil
 }
 

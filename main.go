@@ -172,8 +172,8 @@ func init() {
 	}
 	//defer log_fh.Close()
 	logrus.SetOutput(log_fh)
-	if debug == true {
-		logrus.SetLevel(logrus.InfoLevel)
+	if debug == "true" {
+		logrus.SetLevel(logrus.DebugLevel)
 	} else {
 		logrus.SetLevel(logrus.InfoLevel)
 	}

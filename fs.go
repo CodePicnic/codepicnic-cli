@@ -48,10 +48,7 @@ func (f *FS) Root() (fs.Node, error) {
 		path:    "",
 		nodemap: make(map[string]Node),
 		//mime: "inode/directory",
-		//mimemap: make(map[string]string),
-		//sizemap: make(map[string]uint64),
 	}
-	//f.ltree[""] = SetDummyLDir()
 	return node_dir, nil
 }
 
@@ -67,8 +64,6 @@ type Dir struct {
 	path string
 	//mime    string
 	nodemap map[string]Node
-	//mimemap map[string]string
-	//sizemap map[string]uint64
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -111,35 +106,26 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 var _ = fs.HandleReadDirAller(&Dir{})
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	logrus.Debug("ReadDirAll %+v\n", d)
+	logrus.Debug("ReadDirAll ", d)
+	logrus.Debug("ReadDirAll ", ctx)
 	var res []fuse.Dirent
 	var inode fuse.Dirent
 	files_list, err := ListFiles(d.fs.token, d.fs.container, d.path)
 	if err != nil {
-		/*
-			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-				d.fs.token, err = GetTokenAccess()
-				files_list, err = ListFiles(d.fs.token, d.fs.container, d.path)
-			} else {
-				res = append(res, CreateErrorInode())
-				return res, nil
-			}*/
+		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+			d.fs.token, err = GetTokenAccess()
+			files_list, err = ListFiles(d.fs.token, d.fs.container, d.path)
+		} else {
+			res = append(res, CreateErrorInode())
+			return res, nil
+		}
 	} else {
 		for _, f := range files_list {
-			/*if d.mimemap == nil {
-				d.mimemap = make(map[string]string)
-			}
-			if d.sizemap == nil {
-				d.sizemap = make(map[string]uint64)
-			}*/
 			var n Node
 			path := f.name
 			if d.path != "" {
 				path = d.path + "/" + path
 			}
-			/*d.mimemap[f.name] = f.mime
-			d.sizemap[f.name] = f.size
-			*/
 			if f.mime == "inode/directory" {
 				inode.Type = fuse.DT_Dir
 			} else {
@@ -155,15 +141,6 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 			res = append(res, inode)
 		}
 	}
-	//Only offline nodes from ltree are added to the Dirent
-	/*for _, ln := range d.fs.ltree[d.path] {
-		if ln.offline == true {
-			inode.Type = ln.dtype
-			inode.Name = ln.name
-			res = append(res, inode)
-			d.nodemap[ln.name] = ln
-		}
-	}*/
 	for _, ln := range d.nodemap {
 		if ln.offline == true {
 			inode.Type = ln.dtype
@@ -296,7 +273,6 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				size: node.size,
 				name: req.Name,
 				path: path,
-				//mime:       d.mimemap[req.Name],
 				//basedir:    d.path,
 				//fs:  d.fs,
 				dir: d,
@@ -343,7 +319,14 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	if f.dir.nodemap[f.name].offline == true {
 		content = string(f.data)
 	} else {
-		content, _ = f.ReadFile()
+		content, err = f.ReadFile()
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+				//Probably the token expired, try again
+				f.dir.fs.token, err = GetTokenAccess()
+				content, err = f.ReadFile()
+			}
+		}
 		newLen := len(content)
 		switch {
 		case newLen > len(f.data):
@@ -354,15 +337,6 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		f.data = []byte(content)
 
 	}
-	/*
-	   if err != nil {
-	       if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-	           //Probably the token expired, try again
-	           //logrus.Infof("Token expired, generating a new one")
-	           f.fs.token, err = GetTokenAccess()
-	           t, err = f.ReadFile()
-	       }
-	   }*/
 	fuseutil.HandleRead(req, resp, []byte(content))
 	f.SaveDataToCache()
 	return nil
@@ -382,21 +356,14 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	} else {
 		new_dir = d.path + "/" + req.Name
 	}
-	//err := d.CreateDir(new_dir)
-	d.CreateDir(new_dir)
-	/*
-		if err != nil {
-			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-				//Probably the token expired, try again
-				//logrus.Infof("Token expired, generating a new one")
-				d.fs.token, err = GetTokenAccess()
-				d.CreateDir(new_dir)
-			}
-		}*/
-	/*cache_key := d.fs.container + ":mimemap:" + d.path
-	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)*/
-	//add new path into the ltree
-	//d.fs.ltree[path] = make([]Node, 0)
+	err := d.CreateDir(new_dir)
+	if err != nil {
+		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+			//Probably the token expired, try again
+			d.fs.token, err = GetTokenAccess()
+			d.CreateDir(new_dir)
+		}
+	}
 	//add new local Node into the nodemap
 	var ln Node
 	ln.name = req.Name
@@ -429,10 +396,6 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		//basedir:  d.path,
 		//readlock: false,
 	}
-	/*cache_key := d.fs.container + ":mimemap:" + d.path
-	cp_cache.Set(cache_key, d.mimemap, cache.DefaultExpiration)
-	cache_key = d.fs.container + ":" + d.path
-	cp_cache.Get(cache_key)*/
 	var n Node
 	n.name = req.Name
 	n.dtype = fuse.DT_File
@@ -493,14 +456,29 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	logrus.Debug("Remove %+v\n", req)
+	var err error
 	switch req.Dir {
 	case true:
-		d.RemoveDir(req.Name)
+		err = d.RemoveDir(req.Name)
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+				//Probably the token expired, try again
+				d.fs.token, err = GetTokenAccess()
+				err = d.RemoveDir(req.Name)
+			}
+		}
 
 	case false:
 		if d.nodemap[req.Name].offline == true {
 		} else {
-			d.RemoveFile(req.Name)
+			err = d.RemoveFile(req.Name)
+			if err != nil {
+				if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+					//Probably the token expired, try again
+					d.fs.token, err = GetTokenAccess()
+					err = d.RemoveFile(req.Name)
+				}
+			}
 		}
 		d.DeleteDataFromCache(req.Name)
 	}
@@ -537,7 +515,6 @@ var _ = fs.HandleFlusher(&File{})
 
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	logrus.Debug("Flush %+v\n", req)
-
 	if f.dir.nodemap[f.name].offline == true {
 	} else {
 		if f.writers == 0 {
@@ -550,7 +527,14 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 				}
 				f.new = false
 				//err := f.dir.TouchFile(new_file)
-				f.dir.TouchFile(new_file)
+				err := f.dir.TouchFile(new_file)
+				if err != nil {
+					if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+						//Probably the token expired, try again
+						f.dir.fs.token, err = GetTokenAccess()
+						err = f.dir.TouchFile(new_file)
+					}
+				}
 			}
 			// Read-only handles also get flushes. Make sure we don't
 			// overwrite valid file contents with a nil buffer.
@@ -636,4 +620,11 @@ var _ = fs.NodeSetxattrer(&File{})
 func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	logrus.Debug("Setxattr ", req)
 	return nil
+}
+
+func CreateErrorInode() fuse.Dirent {
+	var inode fuse.Dirent
+	inode.Name = "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT"
+	inode.Type = fuse.DT_File
+	return inode
 }
