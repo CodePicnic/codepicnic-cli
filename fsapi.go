@@ -1,27 +1,16 @@
 package main
 
 import (
-	//"bazil.org/fuse"
-	//"bazil.org/fuse/fs"
-	//"bazil.org/fuse/fuseutil"
 	"bytes"
 	"errors"
-	//"fmt"
 	"github.com/Jeffail/gabs"
 	"github.com/Sirupsen/logrus"
-	//"github.com/patrickmn/go-cache"
-	//"golang.org/x/net/context"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"regexp"
-	//"strconv"
-	//"strings"
-	//"sync"
-	//"syscall"
-	//"time"
 )
 
 func (f *File) ReadFile() (string, error) {
@@ -47,12 +36,7 @@ func (f *File) ReadFile() (string, error) {
 
 //Need to change this to Dir.ListFiles
 func ListFiles(access_token string, container_name string, path string) ([]File, error) {
-	//cache_key := container_name + ":" + path
 	var FileCollection []File
-	/*FileCollectionCache, found := cp_cache.Get(cache_key)
-	  if found {
-	      FileCollection = FileCollectionCache.([]File)
-	  } else {*/
 
 	cp_consoles_url := site + "/api/consoles/" + container_name + "/files?path=" + path
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
@@ -66,10 +50,9 @@ func ListFiles(access_token string, container_name string, path string) ([]File,
 		panic(err)
 	}
 	defer resp.Body.Close()
-	/*
-	   if resp.StatusCode == 401 {
-	       return FileCollection, errors.New(ERROR_NOT_AUTHORIZED)
-	   }*/
+	if resp.StatusCode == 401 {
+		return FileCollection, errors.New(ERROR_NOT_AUTHORIZED)
+	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	jsonFiles, err := gabs.ParseJSON(body)
@@ -84,8 +67,6 @@ func ListFiles(access_token string, container_name string, path string) ([]File,
 		FileCollection = append(FileCollection, jsonFile)
 
 	}
-	//cp_cache.Set(cache_key, FileCollection, cache.DefaultExpiration)
-	//}
 	return FileCollection, nil
 }
 
@@ -108,8 +89,6 @@ func (d *Dir) CreateDir(newdir string) (err error) {
 		logrus.Errorf("CreateDir %v", err)
 		return err
 	}
-	/*cache_key := d.fs.container + ":" + d.path
-	cp_cache.Delete(cache_key)*/
 	return nil
 }
 
@@ -127,7 +106,6 @@ func IsOffline(file string) bool {
 	return false
 }
 
-//func (d *Dir) TouchFile(file string, ch chan error) (err error) {
 func (d *Dir) TouchFile(file string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
@@ -143,7 +121,7 @@ func (d *Dir) TouchFile(file string) (err error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 401 {
-		//ch <- errors.New(ERROR_NOT_AUTHORIZED)
+		ch <- errors.New(ERROR_NOT_AUTHORIZED)
 		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
 	if err != nil {
@@ -201,8 +179,6 @@ func (f *File) UploadFile() (err error) {
 	if err != nil {
 		logrus.Errorf("Remove temp_file %v", err)
 	}
-	/*cache_key := f.dir.fs.container + ":" + f.dir.path
-	cp_cache.Delete(cache_key)*/
 	return
 }
 
@@ -231,26 +207,20 @@ func (d *Dir) RemoveFile(file string) (err error) {
 	if resp.StatusCode == 401 {
 		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
-	//logrus.Infof("Remove file End %s", d.path+" / "+file)
 	return nil
 }
 
 func (d *Dir) RemoveDir(dir string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
-	//logrus.Infof("Remove file %s", d.path+" / "+file)
 	if dir == "" {
 		//Avoid remove base directory
-		//logrus.Infof("RemoveDir empty dir %s", dir)
-		//cp_payload = ` { "commands": "rm ` + dir + `" }`
 		return nil
 	} else if d.path == "" {
-		//logrus.Infof("RemoveDir empty d.path %s", d.path)
 		cp_payload = ` { "commands": "rm -rf /app/` + dir + `" }`
 	} else {
 		cp_payload = ` { "commands": "rm -rf /app/` + d.path + "/" + dir + `" }`
 	}
-	//logrus.Infof("RemoveDir payload %s", cp_payload)
 	var jsonStr = []byte(cp_payload)
 
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
@@ -267,7 +237,6 @@ func (d *Dir) RemoveDir(dir string) (err error) {
 	if resp.StatusCode == 401 {
 		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
-	//logrus.Infof("Remove dir End %s", d.path+" / "+dir)
 	return nil
 }
 
@@ -322,8 +291,6 @@ func (f *File) UploadAsyncFile(ch chan error) (err error) {
 	if err != nil {
 		logrus.Errorf("Remove temp_file %v", err)
 	}
-	/*cache_key := f.dir.fs.container + ":" + f.dir.path
-	cp_cache.Delete(cache_key)*/
 	ch <- err
 	return
 }
