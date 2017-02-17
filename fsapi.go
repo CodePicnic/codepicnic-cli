@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 )
 
 func (f *File) ReadFile() (string, error) {
@@ -24,7 +25,11 @@ func (f *File) ReadFile() (string, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		logrus.Errorf("read_file %v", err)
-		panic(err)
+		if strings.Contains(err.Error(), "no such host") {
+			return "", errors.New(ERROR_DNS_LOOKUP)
+		} else {
+			return "", err
+		}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 {

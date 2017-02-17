@@ -325,6 +325,10 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 				//Probably the token expired, try again
 				f.dir.fs.token, err = GetTokenAccess()
 				content, err = f.ReadFile()
+			} else if strings.Contains(err.Error(), ERROR_DNS_LOOKUP) {
+				return fuse.EINTR
+			} else {
+				return fuse.EIO
 			}
 		}
 		newLen := len(content)
@@ -362,6 +366,8 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 			//Probably the token expired, try again
 			d.fs.token, err = GetTokenAccess()
 			d.CreateDir(new_dir)
+		} else {
+			return nil, fuse.EPERM
 		}
 	}
 	//add new local Node into the nodemap
@@ -382,7 +388,6 @@ var _ = fs.NodeCreater(&Dir{})
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	logrus.Debug("Create %+v\n", req)
-	//ch := make(chan error)
 	path := req.Name
 	if d.path != "" {
 		path = d.path + "/" + path
@@ -393,8 +398,6 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		writers: 0,
 		dir:     d,
 		new:     true,
-		//basedir:  d.path,
-		//readlock: false,
 	}
 	var n Node
 	n.name = req.Name
@@ -402,13 +405,9 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	if IsOffline(req.Name) == true {
 		n.offline = true
 		n.size = 0
-		//d.fs.ltree[d.path] = append(d.fs.ltree[d.path], n)
 	} else {
 		n.offline = false
-		//err := d.CreateFile(new_file)
-		//go d.TouchFile(new_file, ch)
 	}
-
 	d.nodemap[req.Name] = n
 	d.SaveNodemapToCache()
 	return f, f, nil
@@ -627,4 +626,41 @@ func CreateErrorInode() fuse.Dirent {
 	inode.Name = "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT"
 	inode.Type = fuse.DT_File
 	return inode
+}
+
+var _ fs.NodeRenamer = (*Dir)(nil)
+
+func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
+	logrus.Debug("Rename ", req, newDir)
+	req_create := &fuse.CreateRequest{
+		Name:  req.NewName,
+		Flags: fuse.OpenWriteOnly + fuse.OpenCreate + fuse.OpenNonblock,
+		Mode:  0775,
+	}
+	resp_create := &fuse.CreateResponse{}
+	_, fh, _ := d.Create(ctx, req_create, resp_create)
+	switch t := fh.(type) {
+	case *File:
+		logrus.Debug("Rename FILE")
+		f := t
+		if d.nodemap[f.name].offline == true {
+		} else {
+			ch := make(chan error)
+			logrus.Debug("Rename ", f.data)
+			go f.UploadAsyncFile(ch)
+			f.new = false
+		}
+	case *Dir:
+		logrus.Debug("Rename DIR")
+	default:
+		logrus.Debug("Rename NONE")
+	}
+	/*resp_write := &fuse.WriteResponse{}
+	f.Write(ctx, req_write, resp_write)*/
+	req_remove := &fuse.RemoveRequest{
+		Name: req.OldName,
+		Dir:  false,
+	}
+	d.Remove(ctx, req_remove)
+	return nil
 }
