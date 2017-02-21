@@ -89,7 +89,7 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 		mountpoint: mount_point,
 	}
 	logrus.Debug("Start Dispatcher 100")
-	StartDispatcher(100)
+	StartDispatcher(50)
 	logrus.Infof("Serve %v", filesys)
 	var mountpoint string
 	if strings.HasPrefix(mount_dir, "/") {
