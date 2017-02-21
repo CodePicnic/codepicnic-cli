@@ -25,8 +25,8 @@ var WorkQueue = make(chan WorkRequest, 10000)
 func Collector(req *http.Request) error {
 
 	// Now, we take the http request and make a WorkRequest out of them.
-	logrus.Debug("Collector", req)
-	work := WorkRequest{Request: req}
+	logrus.Debug("Collector Started", req)
+	work := WorkRequest{Request: req.Url}
 
 	// Push the work onto the queue.
 	WorkQueue <- work
