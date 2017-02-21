@@ -143,7 +143,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				name:    req.Name,
 				dir:     d,
 				offline: IsOffline(req.Name),
-				data:    d.data,
+				data:    n.data,
 			}
 			return child, nil
 		default:
