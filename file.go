@@ -62,7 +62,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
 	//logrus.Debug("Open %+v\n", req)
-	logrus.Debug("Read ", f.read)
+	logrus.Debug("Open ", f.name)
 	//os x can't handle files truncated
 	if runtime.GOOS == "darwin" {
 		resp.Flags |= fuse.OpenDirectIO
@@ -73,7 +73,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 }
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	logrus.Debug("Open ", f.name)
+	logrus.Debug("Read ", f.name)
 	//data, err := f.GetDataFromCache()
 	/*
 		if err != nil {
