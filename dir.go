@@ -21,7 +21,6 @@ type Dir struct {
 	fs   *FS
 	name string
 	//NodeMap will replace nodemap
-	nodemap map[string]Node
 	NodeMap map[string]fs.Node
 	parent  *Dir
 	//attrs   Attrs
@@ -81,7 +80,6 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 				n = &Dir{
 					fs:      d.fs,
 					name:    f.name,
-					nodemap: make(map[string]Node),
 					NodeMap: make(map[string]fs.Node),
 					parent:  d,
 				}

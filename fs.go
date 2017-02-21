@@ -43,7 +43,6 @@ func (f *FS) Root() (fs.Node, error) {
 	node_dir := &Dir{
 		fs:      f,
 		name:    "",
-		nodemap: make(map[string]Node),
 		NodeMap: make(map[string]fs.Node),
 	}
 	return node_dir, nil
