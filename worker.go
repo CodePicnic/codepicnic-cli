@@ -26,7 +26,7 @@ func Collector(req *http.Request) error {
 
 	// Now, we take the http request and make a WorkRequest out of them.
 	logrus.Debug("Collector Started", req)
-	work := WorkRequest{Request: req.Url}
+	work := WorkRequest{Request: req.URL}
 
 	// Push the work onto the queue.
 	WorkQueue <- work
