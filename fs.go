@@ -154,6 +154,7 @@ func (fsys *FS) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 	//OSX (finder) only supports some Blocks sizes
 	//https://github.com/jacobsa/fuse/blob/3b8b4e55df5483817cd361a28d0a830d5acd962b/fuseops/ops.go
 	resp.Bsize = 1 << 15
+	resp.Namelen = 2048
 	return nil
 
 }
