@@ -62,8 +62,12 @@ func (w *Worker) Start() {
 				// Receive a work request.
 				logrus.Debug("Worker received ", w.ID)
 				client := &http.Client{}
-				resp, _ := client.Do(work.Request)
-				defer resp.Body.Close()
+				resp, err := client.Do(work.Request)
+				if err != nil {
+					logrus.Error("Error Client.do", err)
+				} else {
+					defer resp.Body.Close()
+				}
 				// Handle errors
 				/*if resp.StatusCode == 401 {
 				      return errors.New(ERROR_NOT_AUTHORIZED)
