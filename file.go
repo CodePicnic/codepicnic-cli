@@ -61,7 +61,8 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
-	logrus.Debug("Open %+v\n", req)
+	//logrus.Debug("Open %+v\n", req)
+	logrus.Debug("Read ", f)
 	//os x can't handle files truncated
 	if runtime.GOOS == "darwin" {
 		resp.Flags |= fuse.OpenDirectIO
@@ -72,7 +73,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 }
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	logrus.Debug(req)
+	logrus.Debug("Open ", f)
 	//data, err := f.GetDataFromCache()
 	/*
 		if err != nil {
@@ -114,7 +115,8 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 }
 
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
-	logrus.Debug("Write %+v\n", req)
+	logrus.Debug("Write ", f)
+	logrus.Debug("Write ", req)
 	f.writers = 1
 	f.mu.Lock()
 	defer f.mu.Unlock()
