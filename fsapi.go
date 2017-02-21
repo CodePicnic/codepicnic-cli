@@ -15,7 +15,7 @@ import (
 )
 
 func (f *File) ReadFile() (string, error) {
-	cp_consoles_url := site + "/api/consoles/" + f.dir.fs.container + "/read_file?path=" + f.path
+	cp_consoles_url := site + "/api/consoles/" + f.dir.fs.container + "/read_file?path=" + f.dir.GetFullFilePath(f.name)
 
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
@@ -24,7 +24,6 @@ func (f *File) ReadFile() (string, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		logrus.Errorf("read_file %v", err)
 		if strings.Contains(err.Error(), "no such host") {
 			return "", errors.New(ERROR_DNS_LOOKUP)
 		} else {
@@ -40,13 +39,12 @@ func (f *File) ReadFile() (string, error) {
 }
 
 //Need to change this to Dir.ListFiles
-func ListFiles(access_token string, container_name string, path string) ([]File, error) {
+func (d *Dir) ListFiles() ([]File, error) {
 	var FileCollection []File
-
-	cp_consoles_url := site + "/api/consoles/" + container_name + "/files?path=" + path
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/files?path=" + d.GetFullDirPath()
 	req, err := http.NewRequest("GET", cp_consoles_url, nil)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+access_token)
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
 	req.Header.Set("User-Agent", user_agent)
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -65,36 +63,13 @@ func ListFiles(access_token string, container_name string, path string) ([]File,
 	for key, child := range jsonPaths {
 		var jsonFile File
 		jsonFile.name = string(key)
-
-		jsonFile.path = child.Path("path").Data().(string)
+		//jsonFile.name = child.Path("path").Data().(string)
 		jsonFile.mime = child.Path("type").Data().(string)
 		jsonFile.size = uint64(child.Path("size").Data().(float64))
 		FileCollection = append(FileCollection, jsonFile)
 
 	}
 	return FileCollection, nil
-}
-
-func (d *Dir) CreateDir(newdir string) (err error) {
-	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/create_folder"
-	cp_payload := ` { "path": "` + newdir + `" }`
-	var jsonStr = []byte(cp_payload)
-
-	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+d.fs.token)
-	req.Header.Set("User-Agent", user_agent)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	defer resp.Body.Close()
-	if resp.StatusCode == 401 {
-		return errors.New(ERROR_NOT_AUTHORIZED)
-	}
-	if err != nil {
-		logrus.Errorf("CreateDir %v", err)
-		return err
-	}
-	return nil
 }
 
 func IsOffline(file string) bool {
@@ -135,64 +110,12 @@ func (d *Dir) TouchFile(file string) (err error) {
 	return nil
 }
 
-func (f *File) UploadFile() (err error) {
-	cp_consoles_url := site + "/api/consoles/" + f.dir.fs.container + "/upload_file"
-	var b bytes.Buffer
-	w := multipart.NewWriter(&b)
-	temp_file, err := ioutil.TempFile(os.TempDir(), "cp_")
-	err = ioutil.WriteFile(temp_file.Name(), f.data, 0666)
-	if err != nil {
-		logrus.Errorf("Writint temp %v", err)
-		return err
-	}
-	fw, err := w.CreateFormFile("file", temp_file.Name())
-	if err != nil {
-		logrus.Errorf("CreateFormFile %v", err)
-		return err
-	}
-	if _, err = io.Copy(fw, temp_file); err != nil {
-		return
-	}
-	if fw, err = w.CreateFormField("path"); err != nil {
-		return
-	}
-	if _, err = fw.Write([]byte("/app/" + f.dir.path + "/" + f.name)); err != nil {
-		return
-	}
-	w.Close()
-	req, err := http.NewRequest("POST", cp_consoles_url, &b)
-	if err != nil {
-		logrus.Errorf("Upload Request %v \n", err)
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+f.dir.fs.token)
-	req.Header.Set("Content-Type", w.FormDataContentType())
-	req.Header.Set("User-Agent", user_agent)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	defer resp.Body.Close()
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode == 401 {
-		return errors.New(ERROR_NOT_AUTHORIZED)
-	}
-	if err != nil {
-		logrus.Errorf("Remove temp_file %v", err)
-	}
-	return
-}
-
 //need to merge RemoveDir and RemoveFile
 func (d *Dir) RemoveFile(file string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
-	if d.path == "" {
-		cp_payload = ` { "commands": "rm ` + file + `" }`
-	} else {
-		cp_payload = ` { "commands": "rm ` + d.path + "/" + file + `" }`
-	}
+	rm_path := d.GetFullFilePath(file)
+	cp_payload = ` { "commands": "rm ` + rm_path + `" }`
 	var jsonStr = []byte(cp_payload)
 
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
@@ -215,13 +138,12 @@ func (d *Dir) RemoveFile(file string) (err error) {
 func (d *Dir) RemoveDir(dir string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
+	rm_dir := d.GetFullFilePath(dir)
 	if dir == "" {
 		//Avoid remove base directory
 		return nil
-	} else if d.path == "" {
-		cp_payload = ` { "commands": "rm -rf /app/` + dir + `" }`
 	} else {
-		cp_payload = ` { "commands": "rm -rf /app/` + d.path + "/" + dir + `" }`
+		cp_payload = ` { "commands": "rm -rf /app/` + rm_dir + `" }`
 	}
 	var jsonStr = []byte(cp_payload)
 
@@ -242,7 +164,41 @@ func (d *Dir) RemoveDir(dir string) (err error) {
 	return nil
 }
 
-func (f *File) UploadAsyncFile(ch chan error) (err error) {
+func (d *Dir) MoveFile(src_file string, dst_file string) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
+	cp_payload := ` { "commands": "mv ` + src_file + " " + dst_file + `" }`
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if err != nil {
+		logrus.Errorf("RemoveFile %v", err)
+		return err
+	}
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	return nil
+}
+
+func (d *Dir) AsyncCreateDir(newdir string) (err error) {
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/create_folder"
+	cp_payload := ` { "path": "` + newdir + `" }`
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	Collector(req)
+	return nil
+}
+func (f *File) AsyncUploadFile() error {
 	cp_consoles_url := site + "/api/consoles/" + f.dir.fs.container + "/upload_file"
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
@@ -250,49 +206,37 @@ func (f *File) UploadAsyncFile(ch chan error) (err error) {
 	err = ioutil.WriteFile(temp_file.Name(), f.data, 0666)
 	if err != nil {
 		logrus.Errorf("Writint temp %v", err)
-		ch <- err
 		return err
 	}
 	fw, err := w.CreateFormFile("file", temp_file.Name())
 	if err != nil {
 		logrus.Errorf("CreateFormFile %v", err)
-		ch <- err
 		return err
 	}
 	if _, err = io.Copy(fw, temp_file); err != nil {
-		return
+		return err
 	}
 	if fw, err = w.CreateFormField("path"); err != nil {
-		return
+		return err
 	}
-	if _, err = fw.Write([]byte("/app/" + f.dir.path + "/" + f.name)); err != nil {
-		return
+	upload_file := f.dir.GetFullFilePath(f.name)
+	if _, err = fw.Write([]byte("/app/" + upload_file)); err != nil {
+		return err
 	}
 	w.Close()
 	req, err := http.NewRequest("POST", cp_consoles_url, &b)
 	if err != nil {
 		logrus.Errorf("Upload Request %v \n", err)
-		ch <- err
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+f.dir.fs.token)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	req.Header.Set("User-Agent", user_agent)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	defer resp.Body.Close()
-	if err != nil {
-		ch <- err
-		return err
-	}
-	if resp.StatusCode == 401 {
-		ch <- errors.New(ERROR_NOT_AUTHORIZED)
-		return errors.New(ERROR_NOT_AUTHORIZED)
-	}
+	Collector(req)
+	//where is the file removed ??
 	if err != nil {
 		logrus.Errorf("Remove temp_file %v", err)
 	}
-	ch <- err
-	return
+	return nil
 }
