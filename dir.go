@@ -112,7 +112,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 }
 
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
-	logrus.Debug("Lookup ", d.name, " ", req.Name)
+	//logrus.Debug("Lookup ", d.name, " ", req.Name)
 	logrus.Debugf("Lookup %+v", d)
 	/*
 	   if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
