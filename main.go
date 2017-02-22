@@ -37,6 +37,7 @@ var version string
 var site string
 var swarm_host string
 var format string
+var debug string
 
 var user_agent = "CodePicnic-CLI/" + version + " (" + GetOSVersion() + ")"
 var config_dir = getHomeDir() + string(filepath.Separator) + cfg_dir
@@ -171,6 +172,11 @@ func init() {
 	}
 	//defer log_fh.Close()
 	logrus.SetOutput(log_fh)
+	if debug == "true" {
+		logrus.SetLevel(logrus.DebugLevel)
+	} else {
+		logrus.SetLevel(logrus.InfoLevel)
+	}
 }
 
 func main() {
