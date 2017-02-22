@@ -41,20 +41,11 @@ type FS struct {
 func (f *FS) Root() (fs.Node, error) {
 	logrus.Debug("FS.Root %v\n", f)
 	node_dir := &Dir{
-		fs:      f,
-		name:    "",
-		NodeMap: make(map[string]fs.Node),
+		fs:   f,
+		name: "",
+		//NodeMap: make(map[string]fs.Node),
 	}
 	return node_dir, nil
-}
-
-type Node struct {
-	name    string
-	size    uint64
-	dtype   fuse.DirentType
-	offline bool
-	file    *File
-	dir     *Dir
 }
 
 func MountConsole(access_token string, container_name string, mount_dir string) error {

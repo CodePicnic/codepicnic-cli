@@ -18,12 +18,10 @@ import (
 )
 
 type Dir struct {
-	fs   *FS
-	name string
-	//NodeMap will replace nodemap
+	fs      *FS
+	name    string
 	NodeMap map[string]fs.Node
 	parent  *Dir
-	//attrs   Attrs
 }
 
 var _ = fs.HandleReadDirAller(&Dir{})
@@ -61,7 +59,6 @@ func (d *Dir) GetFullFilePath(name string) string {
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	logrus.Debug("ReadDirAll ", d, ctx)
 	var res []fuse.Dirent
-	var inode fuse.Dirent
 	files_list, err := d.ListFiles()
 	if err != nil {
 		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
@@ -74,18 +71,34 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	} else {
 		for _, f := range files_list {
 			var n fs.Node
-			inode.Name = f.name
 			if f.mime == "inode/directory" {
-				inode.Type = fuse.DT_Dir
+				inode := fuse.Dirent{
+					Name: f.name,
+					Type: fuse.DT_Dir,
+				}
+				res = append(res, inode)
+				//Copy the nodemap from child node, if child/nodemap previously exists
+				dir_nodemap := make(map[string]fs.Node)
+				if d.NodeMap != nil {
+					node_dir := d.GetNode(f.name)
+					if node_dir != nil {
+						dir_nodemap = node_dir.(*Dir).NodeMap
+					}
+				}
 				n = &Dir{
 					fs:      d.fs,
 					name:    f.name,
-					NodeMap: make(map[string]fs.Node),
-					parent:  d,
+					NodeMap: dir_nodemap,
+					//NodeMap: make(map[string]fs.Node),
+					parent: d,
 				}
 
 			} else {
-				inode.Type = fuse.DT_File
+				inode := fuse.Dirent{
+					Name: f.name,
+					Type: fuse.DT_Dir,
+				}
+				res = append(res, inode)
 				n = &File{
 					name:    f.name,
 					dir:     d,
@@ -94,15 +107,17 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 				}
 			}
 			d.AddNode(f.name, n)
-			res = append(res, inode)
 		}
 	}
+	//List all offline files from nodemap
 	for _, ln := range d.NodeMap {
-		switch nh := ln.(type) {
+		switch node_file := ln.(type) {
 		case *File:
-			if nh.offline == true {
-				inode.Type = fuse.DT_File
-				inode.Name = nh.name
+			if node_file.offline == true {
+				inode := fuse.Dirent{
+					Name: node_file.name,
+					Type: fuse.DT_File,
+				}
 				res = append(res, inode)
 			}
 		}
@@ -112,8 +127,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 }
 
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
-	//logrus.Debug("Lookup ", d.name, " ", req.Name)
-	logrus.Debugf("Lookup %+v", d)
+	logrus.Debugf("Lookup %s / %s", d.name, req.Name)
 	/*
 	   if req.Name == "CONNECTION_ERROR_CHECK_YOUR_CODEPICNIC_ACCOUNT" {
 	       child := &File{
@@ -122,41 +136,18 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	       }
 	       return child, nil
 	   }*/
-	d.GetFullFilePath(req.Name)
+	//d.GetFullFilePath(req.Name)
 	//d.GetNodeMap()
-	node := d.NodeMap[req.Name]
-	if node != nil {
-		switch n := node.(type) {
-		case *Dir:
-			logrus.Debug("Lookup Dir \n")
-			child := &Dir{
-				fs:      d.fs,
-				name:    req.Name,
-				NodeMap: make(map[string]fs.Node),
-				parent:  d,
-			}
-			return child, nil
-		case *File:
-			logrus.Debug("Lookup File \n")
-			child := &File{
-				size:    n.size,
-				name:    req.Name,
-				dir:     d,
-				offline: IsOffline(req.Name),
-				data:    n.data,
-			}
-			return child, nil
-		default:
-			logrus.Debug("Lookup NOENT \n")
-			return nil, fuse.ENOENT
-		}
+
+	if node := d.GetNode(req.Name); node != nil {
+		return node, nil
 	}
 	logrus.Debug("Lookup NOENT \n")
 	return nil, fuse.ENOENT
 }
 
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
-	logrus.Debug("Mkdir %+v\n", req)
+	logrus.Debugf("Mkdir %s / %s", d.name, req.Name)
 	new_dir := d.GetFullFilePath(req.Name)
 	err := d.AsyncCreateDir(new_dir)
 	if err != nil {
@@ -180,7 +171,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 }
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	logrus.Debug("Create %+v\n", req)
+	logrus.Debugf("Create %s / %s", d.name, req.Name)
 	/*
 		path := req.Name
 		if d.path != "" {
@@ -205,7 +196,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 }
 
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
-	logrus.Debug("Remove %+v\n", req)
+	logrus.Debugf("Remove %s / %s", d.name, req.Name)
 	var err error
 	switch req.Dir {
 	case true:
