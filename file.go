@@ -68,7 +68,6 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		resp.Flags |= fuse.OpenDirectIO
 	} else {
 		resp.Flags |= fuse.OpenKeepCache
-		//resp.Flags |= fuse.OpenDirectIO
 	}
 	return f, nil
 }
