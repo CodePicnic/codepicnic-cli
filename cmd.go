@@ -57,6 +57,10 @@ func CmdListConsoles() error {
 				return nil
 			}
 		}
+		if len(consoles) == 0 {
+			fmt.Printf(color("Aww, you haven't created any consoles yet. Try 'codepicnic create'.\n", "error"))
+			return nil
+		}
 		output := []string{
 			"CONSOLE ID |TITLE|TYPE|CREATED|MOUNTED|URL",
 		}
