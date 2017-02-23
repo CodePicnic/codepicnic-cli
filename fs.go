@@ -8,6 +8,7 @@ import (
 	//"errors"
 	"fmt"
 	//"github.com/Jeffail/gabs"
+	"github.com/CodePicnic/codepicnic-go"
 	"github.com/Sirupsen/logrus"
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/net/context"
@@ -52,7 +53,12 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	var mount_point string
 	var mountlink string
 	var mountlabel string
-	_, console, _ := isValidConsole(access_token, container_name)
+	console, err := codepicnic.GetConsole(container_name)
+	fmt.Printf("console error %v \n", err)
+	if err != nil {
+		return err
+	}
+	//_, console, _ := isValidConsole(access_token, container_name)
 	if len(console.Title) > 0 {
 		mountlink = console.Permalink
 		mountlabel = console.Title + " (CodePicnic)"
@@ -93,6 +99,27 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 
 	serveErr := make(chan error, 1)
 	fmt.Printf("/app directory mounted on %s \n", mountpoint)
+
+	//ping_ticker := time.NewTicker(time.Millisecond * 60000)
+	ping_ticker := time.NewTicker(time.Millisecond * 15000)
+	go func() {
+		for _ = range ping_ticker.C {
+			logrus.Debug("Ping codepicnic.com/api %v")
+			status, err := console.Status()
+			if err != nil {
+				switch err.Error() {
+				case codepicnic.ERROR_CONNECTION_REFUSED:
+					codepicnic.SetStatus("offline")
+					logrus.Debugf("Status Offline")
+				default:
+					logrus.Debugf("Ping %v", err)
+				}
+			} else {
+				logrus.Debug("Ping ", status)
+			}
+		}
+	}()
+
 	err = fs.Serve(mp, filesys)
 	closeErr := mp.Close()
 	if err == nil {

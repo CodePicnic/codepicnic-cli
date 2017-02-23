@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/CodePicnic/codepicnic-go"
 	"github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
 	"github.com/docker/docker/api/types"
@@ -169,6 +170,7 @@ func init() {
 	log_file := config_dir + string(filepath.Separator) + cfg_log
 	log_fh, err := os.OpenFile(log_file, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
+		panic(err)
 	}
 	//defer log_fh.Close()
 	logrus.SetOutput(log_fh)
@@ -176,6 +178,11 @@ func init() {
 		logrus.SetLevel(logrus.DebugLevel)
 	} else {
 		logrus.SetLevel(logrus.InfoLevel)
+	}
+	client_id, client_secret := GetCredentialsFromFile()
+	err = codepicnic.Init(client_id, client_secret)
+	if err != nil {
+		panic(err)
 	}
 }
 

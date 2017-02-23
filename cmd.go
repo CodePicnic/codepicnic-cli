@@ -275,7 +275,10 @@ func CmdMountConsole(args []string) error {
 		}
 		fmt.Printf("Mounting /app directory ... \n")
 		fmt.Printf("TIP: If you want to mount in the background please add \"&\" at the end of the mount command. \n")
-		MountConsole(access_token, args[0], mount_point)
+		err = MountConsole(access_token, args[0], mount_point)
+		if err != nil {
+			fmt.Printf(color("There was an error mounting your console. Please  verify if the console exists and try again.\n", "error"))
+		}
 	} else {
 
 		fmt.Printf("Container %s is already mounted in %s \n", args[0], mountpoint)
