@@ -125,7 +125,7 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 			_, err := console.Status()
 			if err != nil {
 				switch err.Error() {
-				case codepicnic.ERROR_CONNECTION_REFUSED, codepicnic.ERROR_TCP_TIMEOUT, codepicnic.ERROR_CLIENT_TIMEOUT, codepicnic.ERROR_TLS_TIMEOUT:
+				case codepicnic.ERROR_CONNECTION_REFUSED, codepicnic.ERROR_TCP_TIMEOUT, codepicnic.ERROR_CLIENT_TIMEOUT, codepicnic.ERROR_TLS_TIMEOUT, codepicnic.ERROR_NETWORK_UNREACHABLE:
 					filesys.StateDown()
 					//Check again after 10 seconds if state is offline-soft
 					if filesys.state == "offline-soft" {
@@ -133,7 +133,7 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 						_, err := console.Status()
 						if err != nil {
 							switch err.Error() {
-							case codepicnic.ERROR_CONNECTION_REFUSED, codepicnic.ERROR_TCP_TIMEOUT, codepicnic.ERROR_CLIENT_TIMEOUT, codepicnic.ERROR_TLS_TIMEOUT:
+							case codepicnic.ERROR_CONNECTION_REFUSED, codepicnic.ERROR_TCP_TIMEOUT, codepicnic.ERROR_CLIENT_TIMEOUT, codepicnic.ERROR_TLS_TIMEOUT, codepicnic.ERROR_NETWORK_UNREACHABLE:
 								filesys.StateDown()
 							}
 						}
@@ -149,7 +149,7 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 					_, err := console.Status()
 					if err != nil {
 						switch err.Error() {
-						case codepicnic.ERROR_CONNECTION_REFUSED, codepicnic.ERROR_TCP_TIMEOUT, codepicnic.ERROR_CLIENT_TIMEOUT, codepicnic.ERROR_TLS_TIMEOUT:
+						case codepicnic.ERROR_CONNECTION_REFUSED, codepicnic.ERROR_TCP_TIMEOUT, codepicnic.ERROR_CLIENT_TIMEOUT, codepicnic.ERROR_TLS_TIMEOUT, codepicnic.ERROR_NETWORK_UNREACHABLE:
 							filesys.StateDown()
 						}
 					} else {
