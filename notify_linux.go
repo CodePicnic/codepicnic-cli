@@ -4,7 +4,7 @@ import (
 	"github.com/ctcpip/notifize"
 )
 
-func NotifyDesktop() {
+func NotifyDesktop(message string) {
 
-	notifize.Display("CodePicnic", "Console succesfully mounted", false, share_dir_linux+"/"+notify_file)
+	notifize.Display("CodePicnic", message, false, share_dir_linux+"/"+notify_file)
 }

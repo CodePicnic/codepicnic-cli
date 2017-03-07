@@ -7,8 +7,8 @@ import (
 	"github.com/twstrike/gosx-notifier"
 )
 
-func NotifyDesktop() {
-	note := gosxnotifier.NewNotification("Console succesfully mounted")
+func NotifyDesktop(message string) {
+	note := gosxnotifier.NewNotification(message)
 	note.Title = "CodePicnic"
 	//note.AppIcon = share_dir_darwin + "/" + notify_file
 	//note.ContentImage = getHomeDir() + "/" + cfg_dir + "/" + notify_file

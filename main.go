@@ -184,6 +184,8 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+	//token, _ := codepicnic.GetToken()
+	//logrus.Debug("Token: ", token)
 }
 
 func main() {

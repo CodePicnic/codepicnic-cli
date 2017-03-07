@@ -401,7 +401,7 @@ func BgMountConsole(console_id string, mountbase string) {
 				fmt.Printf("Error %v", err)
 			} else {
 				fmt.Printf(color("Done * Mounted on %s \n", "response"), mountpoint)
-				NotifyDesktop()
+				NotifyDesktop("Console succesfully mounted")
 			}
 		}
 	} else {

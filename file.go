@@ -84,7 +84,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	var content string
 	var err error
 
-	if f.offline == true {
+	if f.dir.fs.state == "offline" || f.offline == true {
 		content = string(f.data)
 	} else {
 		content, err = f.ReadFile()
@@ -153,40 +153,57 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	logrus.Debug("Flush %+v\n", req)
-	if f.offline == true {
+	//if filesystem is offline
+	if f.dir.fs.state == "offline" {
+		if f.offline == true {
+		} else {
+			op := Operation{
+				node:   f,
+				source: f.name,
+			}
+			if f.writers == 0 && f.new == true {
+				op.name = "touch"
+			} else {
+				op.name = "upload"
+			}
+			f.new = false
+			f.dir.fs.WaitList = append(f.dir.fs.WaitList, op)
+			logrus.Debugf("WaitList %+v ", f.dir.fs.WaitList)
+		}
 	} else {
-		if f.writers == 0 {
-			if f.new == true {
-				new_file := f.dir.GetFullFilePath(f.name)
-				f.new = false
-				//err := f.dir.TouchFile(new_file)
-				err := f.dir.TouchFile(new_file)
-				if err != nil {
-					if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-						//Probably the token expired, try again
-						f.dir.fs.token, err = GetTokenAccess()
-						err = f.dir.TouchFile(new_file)
+
+		if f.offline == true {
+		} else {
+			if f.writers == 0 {
+				if f.new == true {
+					//new_file := f.dir.GetFullFilePath(f.name)
+					f.new = false
+					//err := f.dir.TouchFile(new_file)
+					err := f.dir.TouchFile(f.name)
+					if err != nil {
+						if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+							//Probably the token expired, try again
+							f.dir.fs.token, err = GetTokenAccess()
+							err = f.dir.TouchFile(f.name)
+						}
 					}
 				}
+				// Read-only handles also get flushes. Make sure we don't
+				// overwrite valid file contents with a nil buffer.
+				return nil
+			} else {
+				f.AsyncUploadFile()
+				f.new = false
+				/*
+					if err != nil {
+						if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+							//Probably the token expired, try again
+							//logrus.Infof("Token expired, generating a new one")
+							f.fs.token, err = GetTokenAccess()
+							f.UploadFile()
+						}
+					}*/
 			}
-			// Read-only handles also get flushes. Make sure we don't
-			// overwrite valid file contents with a nil buffer.
-			return nil
-		} else {
-			//ch := make(chan error)
-			//go f.UploadAsyncFile(ch)
-			//err := f.UploadFile()
-			f.AsyncUploadFile()
-			f.new = false
-			/*
-				if err != nil {
-					if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-						//Probably the token expired, try again
-						//logrus.Infof("Token expired, generating a new one")
-						f.fs.token, err = GetTokenAccess()
-						f.UploadFile()
-					}
-				}*/
 		}
 	}
 	return nil

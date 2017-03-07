@@ -22,6 +22,7 @@ type Dir struct {
 	name    string
 	NodeMap map[string]fs.Node
 	parent  *Dir
+	read    bool
 }
 
 var _ = fs.HandleReadDirAller(&Dir{})
@@ -57,8 +58,30 @@ func (d *Dir) GetFullFilePath(name string) string {
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	logrus.Debug("ReadDirAll ", d, ctx)
+	logrus.Debugf("ReadDirAll %s", d.name)
 	var res []fuse.Dirent
+
+	//Return nodemap if the filesystem is offline
+	if d.fs.state == "offline" {
+		logrus.Debug("ReadDirAll Offline")
+		for _, node := range d.NodeMap {
+			switch node_handle := node.(type) {
+			case *File:
+				inode := fuse.Dirent{
+					Name: node_handle.name,
+					Type: fuse.DT_File,
+				}
+				res = append(res, inode)
+			case *Dir:
+				inode := fuse.Dirent{
+					Name: node_handle.name,
+					Type: fuse.DT_Dir,
+				}
+				res = append(res, inode)
+			}
+		}
+		return res, nil
+	}
 	files_list, err := d.ListFiles()
 	if err != nil {
 		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
@@ -104,25 +127,29 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 					dir:     d,
 					offline: false,
 					size:    f.size,
+					mime:    f.mime,
 				}
 			}
 			d.AddNode(f.name, n)
 		}
-	}
-	//List all offline files from nodemap
-	for _, ln := range d.NodeMap {
-		switch node_file := ln.(type) {
-		case *File:
-			if node_file.offline == true {
-				inode := fuse.Dirent{
-					Name: node_file.name,
-					Type: fuse.DT_File,
+		//List all offline files from nodemap
+		for _, ln := range d.NodeMap {
+			switch node_file := ln.(type) {
+			case *File:
+				if node_file.offline == true {
+					inode := fuse.Dirent{
+						Name: node_file.name,
+						Type: fuse.DT_File,
+					}
+					res = append(res, inode)
 				}
-				res = append(res, inode)
 			}
 		}
+		if d.read == false && d.name == "" {
+			go d.fs.OfflineSync(d, ctx)
+			d.read = true
+		}
 	}
-	//d.SaveNodemapToCache()
 	return res, nil
 }
 
@@ -148,15 +175,26 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	logrus.Debugf("Mkdir %s / %s", d.name, req.Name)
-	new_dir := d.GetFullFilePath(req.Name)
-	err := d.AsyncCreateDir(new_dir)
-	if err != nil {
-		if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-			//Probably the token expired, try again
-			d.fs.token, err = GetTokenAccess()
-			d.AsyncCreateDir(new_dir)
-		} else {
-			return nil, fuse.EPERM
+	//new_dir := d.GetFullFilePath(req.Name)
+	if d.fs.state == "offline" {
+		op := Operation{
+			node:   d,
+			name:   "mkdir",
+			source: req.Name,
+		}
+		d.fs.WaitList = append(d.fs.WaitList, op)
+		logrus.Infof("WaitList %+v ", d.fs.WaitList)
+
+	} else {
+		err := d.AsyncCreateDir(req.Name)
+		if err != nil {
+			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+				//Probably the token expired, try again
+				d.fs.token, err = GetTokenAccess()
+				d.AsyncCreateDir(req.Name)
+			} else {
+				return nil, fuse.EPERM
+			}
 		}
 	}
 	n := &Dir{
@@ -198,30 +236,44 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	logrus.Debugf("Remove %s / %s", d.name, req.Name)
 	var err error
-	switch req.Dir {
-	case true:
-		err = d.RemoveDir(req.Name)
-		if err != nil {
-			if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
-				//Probably the token expired, try again
-				d.fs.token, err = GetTokenAccess()
-				err = d.RemoveDir(req.Name)
-			}
+	if d.fs.state == "offline" {
+		op := Operation{
+			node:   d,
+			source: req.Name,
 		}
-
-	case false:
-		if IsOffline(req.Name) == true {
+		if req.Dir == true {
+			op.name = "rmdir"
 		} else {
-			err = d.RemoveFile(req.Name)
+			op.name = "rm"
+		}
+		d.fs.WaitList = append(d.fs.WaitList, op)
+		logrus.Infof("WaitList %+v ", d.fs.WaitList)
+	} else {
+		switch req.Dir {
+		case true:
+			err = d.RemoveDir(req.Name)
 			if err != nil {
 				if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
 					//Probably the token expired, try again
 					d.fs.token, err = GetTokenAccess()
-					err = d.RemoveFile(req.Name)
+					err = d.RemoveDir(req.Name)
 				}
 			}
+
+		case false:
+			if IsOffline(req.Name) == true {
+			} else {
+				err = d.RemoveFile(req.Name)
+				if err != nil {
+					if strings.Contains(err.Error(), ERROR_NOT_AUTHORIZED) {
+						//Probably the token expired, try again
+						d.fs.token, err = GetTokenAccess()
+						err = d.RemoveFile(req.Name)
+					}
+				}
+			}
+			//d.DeleteDataFromCache(req.Name)
 		}
-		//d.DeleteDataFromCache(req.Name)
 	}
 	d.RemoveNode(req.Name)
 	//d.SaveNodemapToCache()

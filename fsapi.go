@@ -87,9 +87,11 @@ func IsOffline(file string) bool {
 }
 
 func (d *Dir) TouchFile(file string) (err error) {
+	new_file := d.GetFullFilePath(file)
+
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/exec"
 	var cp_payload string
-	cp_payload = ` { "commands": "touch ` + file + `" }`
+	cp_payload = ` { "commands": "touch ` + new_file + `" }`
 	var jsonStr = []byte(cp_payload)
 
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
@@ -186,7 +188,8 @@ func (d *Dir) MoveFile(src_file string, dst_file string) (err error) {
 	return nil
 }
 
-func (d *Dir) AsyncCreateDir(newdir string) (err error) {
+func (d *Dir) AsyncCreateDir(dir string) (err error) {
+	newdir := d.GetFullFilePath(dir)
 	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/create_folder"
 	cp_payload := ` { "path": "` + newdir + `" }`
 	var jsonStr = []byte(cp_payload)
