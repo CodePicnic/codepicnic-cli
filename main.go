@@ -13,6 +13,7 @@ import (
 	"github.com/docker/docker/pkg/system"
 	"golang.org/x/net/context"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"os/user"
@@ -170,10 +171,12 @@ func init() {
 	log_file := config_dir + string(filepath.Separator) + cfg_log
 	log_fh, err := os.OpenFile(log_file, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
-		panic(err)
+		//login to stderr
+		logrus.SetOutput(ioutil.Discard)
+	} else {
+		//defer log_fh.Close()
+		logrus.SetOutput(log_fh)
 	}
-	//defer log_fh.Close()
-	logrus.SetOutput(log_fh)
 	if debug == "true" {
 		logrus.SetLevel(logrus.DebugLevel)
 	} else {
