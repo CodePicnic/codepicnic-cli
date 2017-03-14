@@ -179,11 +179,6 @@ func init() {
 	} else {
 		logrus.SetLevel(logrus.InfoLevel)
 	}
-	client_id, client_secret := GetCredentialsFromFile()
-	err = codepicnic.Init(client_id, client_secret)
-	if err != nil {
-		panic(err)
-	}
 	//token, _ := codepicnic.GetToken()
 	//logrus.Debug("Token: ", token)
 }
@@ -275,6 +270,11 @@ func main() {
 			Hidden: true,
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
+				client_id, client_secret := GetCredentialsFromFile()
+				err := codepicnic.Init(client_id, client_secret)
+				if err != nil {
+					fmt.Printf(color("Authorization error", "error"))
+				}
 				CmdMountConsole(c.Args())
 				return nil
 			},
@@ -574,6 +574,11 @@ func main() {
 			//},
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
+				client_id, client_secret := GetCredentialsFromFile()
+				err := codepicnic.Init(client_id, client_secret)
+				if err != nil {
+					fmt.Printf(color("Authorization error", "error"))
+				}
 
 				var mountbase string
 				var input_unmount string
