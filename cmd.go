@@ -142,7 +142,11 @@ func CmdConfigure() error {
 	}
 	fmt.Printf(color("Done. Token: %s \n", "response"), access_token)
 	fmt.Printf(color("Saving credentials... ", "response"))
-	SaveCredentialsToFile(client_id, client_secret)
+	err = SaveCredentialsToFile(client_id, client_secret)
+	if err != nil {
+		fmt.Println(color("Error:", "error"), err.Error())
+		return nil
+	}
 	SaveTokenToFile(access_token)
 	fmt.Printf(color("Done.\n", "response"))
 	fmt.Printf(color(msg_bugs+"\n", "response"))
@@ -158,7 +162,11 @@ func CmdConfigureCredentials(client_id string, client_secret string) error {
 	}
 	fmt.Printf(color("Done. Token: %s \n", "response"), access_token)
 	fmt.Printf(color("Saving credentials... ", "response"))
-	SaveCredentialsToFile(client_id, client_secret)
+	err = SaveCredentialsToFile(client_id, client_secret)
+	if err != nil {
+		fmt.Println(color("Error:", "error"), err.Error())
+		return nil
+	}
 	SaveTokenToFile(access_token)
 	fmt.Printf(color("Done.\n", "response"))
 	fmt.Printf(color(msg_bugs+"\n", "response"))
@@ -624,13 +632,21 @@ func CmdUpdate() error {
 	return nil
 }
 
-func CmdCheck() {
-	CreateConfigDir()
-	if IsFirstCheck() == true {
+func CmdCheck() error {
+	err := CreateConfigDir()
+	if err != nil {
+		return err
+	}
+	first_check, err := IsFirstCheck()
+	if err != nil {
+		return err
+	}
+	if first_check == true {
 		if IsLastVersion() == false {
 			last_version, _ := GetLastVersion()
 			fmt.Printf(color("Version %s is out! Update your version with 'codepicnic update'\n", "response"), last_version)
 		}
 	}
+	return nil
 
 }

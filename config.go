@@ -42,23 +42,24 @@ func IsLastVersion() bool {
 	return true
 }
 
-func CreateConfigDir() {
+func CreateConfigDir() error {
 	config_file := config_dir + string(filepath.Separator) + cfg_file
 	os.Mkdir(config_dir, 0755)
 	if _, err := os.Stat(config_file); os.IsNotExist(err) {
 		f, err := os.Create(config_file)
 		if err != nil {
-			fmt.Println(color(msg_rwperms, "error"))
+			return err
 		}
 		f.Close()
 	}
+	return nil
 }
 
-func SaveMountsToFile(container string, mountpoint string) {
+func SaveMountsToFile(container string, mountpoint string) error {
 
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	cfg.Section("mounts").Key(container).SetValue(mountpoint)
 	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
@@ -66,14 +67,14 @@ func SaveMountsToFile(container string, mountpoint string) {
 	if err != nil {
 		fmt.Println(color(msg_rwperms, "error"))
 	}
-	return
+	return nil
 
 }
-func RemoveMountFromFile(container string) {
+func RemoveMountFromFile(container string) error {
 
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	cfg.Section("mounts").DeleteKey(container)
 	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
@@ -81,14 +82,14 @@ func RemoveMountFromFile(container string) {
 	if err != nil {
 		fmt.Println(color(msg_rwperms, "error"))
 	}
-	return
+	return nil
 
 }
 
 func GetMountsFromFile(container string) string {
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
-		fmt.Println(color("Error.", "error"))
+		fmt.Println(color("Error1.", "error"))
 		fmt.Println(color(msg_rwperms, "error"))
 	}
 	mountpoint := cfg.Section("mounts").Key(container).String()
@@ -108,7 +109,7 @@ func SaveTokenToFile(access_token string) {
 
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
-		fmt.Println(color("Error.", "error"))
+		fmt.Println(color("Error2.", "error"))
 		fmt.Println(color(msg_rwperms, "error"))
 	}
 	cfg.Section("credentials").Key("access_token").SetValue(access_token)
@@ -122,34 +123,32 @@ func SaveTokenToFile(access_token string) {
 
 }
 
-func IsFirstCheck() bool {
+func IsFirstCheck() (bool, error) {
 	day := time.Duration(24) * time.Hour
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
-		fmt.Println(color("Error.", "error"))
-		fmt.Println(color(msg_rwperms, "error"))
+		return false, err
 	}
 	last_update := cfg.Section("update").Key("last_update")
 	if last_update.String() == "" {
 		err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 		if err != nil {
-			fmt.Println(color("Error.", "error"))
-			fmt.Println(color(msg_rwperms, "error"))
+			return false, err
 		}
 		cfg.Section("update").Key("last_update").SetValue(time.Now().Format(time.RFC3339))
 		err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-		return true
+		return true, nil
 	} else {
 		last_update_time := last_update.MustTime()
 		diff_update := time.Now().Sub(last_update_time)
 		if diff_update > day {
 			cfg.Section("update").Key("last_update").SetValue(time.Now().Format(time.RFC3339))
 			err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
-			return true
+			return true, nil
 		} else {
-			return false
+			return false, nil
 		}
-		return false
+		return false, nil
 	}
 
 }

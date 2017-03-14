@@ -94,14 +94,14 @@ func ProxyConsole(access_token string, container_name string) {
 	cl := &http.Client{Transport: tr}
 	cli, err := client.NewClient(swarm_host, "v1.22", cl, defaultHeaders)
 	if err != nil {
-		fmt.Println("e1", err)
-		panic(err)
+		fmt.Println(err)
+		return
 	}
 	//r, err := cli.ContainerInspect(context.Background(), container_name)
 	r, err := cli.ContainerExecCreate(context.Background(), container_name, types.ExecConfig{User: "", Cmd: []string{"bash"}, Tty: true, AttachStdin: true, AttachStderr: true, AttachStdout: true, Detach: false})
 	if err != nil {
-		fmt.Println("e2", err)
-		panic(err)
+		fmt.Println(err)
+		return
 	}
 	//fmt.Println(r.ID)
 

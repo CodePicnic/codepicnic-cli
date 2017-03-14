@@ -67,29 +67,12 @@ func getHomeDir() string {
 
 	user_data, err := user.Current()
 	if err != nil {
-		panic(msg_bugs)
+		return ""
 	}
 	return user_data.HomeDir
 
 }
 
-/*
-func ProxyConsole(access_token string, container_name string) string {
-
-	cp_connect_url := CodepicnicAuthServer + "/connect/" + container_name
-	req, err := http.NewRequest("GET", cp_connect_url, nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+access_token)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("%+v\n", err)
-		panic(err)
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	return string(body)
-}*/
 func ConnectConsole(access_token string, container_name string) {
 
 	defaultHeaders := map[string]string{"User-Agent": "Docker-Client/1.10.3 (linux)"}
@@ -288,7 +271,10 @@ func main() {
 			Hidden: true,
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
-				CmdCheck()
+				err := CmdCheck()
+				if err != nil {
+					fmt.Println(color(msg_rwperms, "error"))
+				}
 				return nil
 			},
 		},
@@ -707,7 +693,12 @@ func main() {
 			},
 		},
 	}
-	CmdCheck()
+	err := CmdCheck()
+	if err != nil {
+		fmt.Println(color(msg_rwperms, "error"))
+		color_exit()
+		return
+	}
 	app.Run(os.Args)
 	color_exit()
 }

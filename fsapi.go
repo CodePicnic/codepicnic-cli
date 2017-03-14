@@ -50,7 +50,7 @@ func (d *Dir) ListFiles() ([]File, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		logrus.Errorf("List files %v", err)
-		panic(err)
+		return FileCollection, errors.New(ERROR_NOT_CONNECTED)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 {

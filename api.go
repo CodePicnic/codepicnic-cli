@@ -145,10 +145,10 @@ func GetTokenAccessFromFile() (token string) {
 	return
 }
 
-func SaveCredentialsToFile(client_id string, client_secret string) {
+func SaveCredentialsToFile(client_id string, client_secret string) error {
 	cfg, err := ini.Load(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	cfg.Section("credentials").Key("client_id").SetValue(client_id)
 	cfg.Section("credentials").Key("client_secret").SetValue(client_secret)
@@ -156,9 +156,9 @@ func SaveCredentialsToFile(client_id string, client_secret string) {
 	err = cfg.SaveTo(getHomeDir() + "/" + cfg_dir + "/" + cfg_file)
 
 	if err != nil {
-		panic(err)
+		return err
 	}
-	return
+	return nil
 
 }
 
@@ -173,7 +173,7 @@ func ListConsoles(access_token string) ([]ConsoleJson, error) {
 	//fmt.Println(time.Now().Format("20060102150405"))
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 {
@@ -221,7 +221,8 @@ func JsonListConsoles(access_token string) string {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		//panic(err)
+		return ""
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
@@ -284,7 +285,7 @@ func StartConsole(access_token string, container_name string) error {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return errors.New(ERROR_NOT_CONNECTED)
 	}
 	if resp.StatusCode == 401 {
 		return errors.New(ERROR_INVALID_TOKEN)
@@ -307,7 +308,7 @@ func StopConsole(access_token string, container_name string) error {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return errors.New(ERROR_NOT_CONNECTED)
 	}
 	if resp.StatusCode == 401 {
 		return errors.New(ERROR_INVALID_TOKEN)
@@ -330,7 +331,7 @@ func RestartConsole(access_token string, container_name string) error {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return errors.New(ERROR_NOT_CONNECTED)
 	}
 	if resp.StatusCode == 401 {
 		return errors.New(ERROR_INVALID_TOKEN)
@@ -358,13 +359,14 @@ func RemoveConsole(access_token string, console string) error {
 		return errors.New(ERROR_USAGE_EXCEEDED)
 	}
 	if err != nil {
-		panic(err)
+		return errors.New(ERROR_NOT_CONNECTED)
 	}
 	defer resp.Body.Close()
 	return nil
 }
 func ListStacks(access_token string) ([]StackJson, error) {
 
+	var stack_collection StackCollection
 	cp_types_url := site + "/api/container_types.json"
 	req, err := http.NewRequest("GET", cp_types_url, nil)
 	req.Header.Set("Content-Type", "application/json")
@@ -373,7 +375,7 @@ func ListStacks(access_token string) ([]StackJson, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return stack_collection.Stacks, errors.New(ERROR_NOT_CONNECTED)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 {
@@ -381,7 +383,6 @@ func ListStacks(access_token string) ([]StackJson, error) {
 	} else if resp.StatusCode == 429 {
 		return nil, errors.New(ERROR_USAGE_EXCEEDED)
 	}
-	var stack_collection StackCollection
 	body, err := ioutil.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &stack_collection)
 	if err != nil {
@@ -436,7 +437,7 @@ func CreateConsole(access_token string, console_extra ConsoleExtra) (string, str
 	//fmt.Println("response Status:", resp.Status)
 	//fmt.Println("response Status:", resp.StatusCode)
 	if err != nil {
-		panic(err)
+		return "", "", errors.New(ERROR_NOT_CONNECTED)
 	}
 	defer resp.Body.Close()
 	var console Console
@@ -459,7 +460,7 @@ func DownloadFileFromConsole(token string, console_id string, src string, dst st
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return errors.New(ERROR_NOT_CONNECTED)
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
