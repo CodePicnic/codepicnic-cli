@@ -609,7 +609,19 @@ func main() {
 			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
-				CmdRemoveConsole(c.Args()[0])
+				var console string
+				if c.NArg() == 0 {
+					console = GetFromPrompt("Console Id", "")
+					if console == "" {
+						fmt.Printf(color("This is not a valid console. Please try again \n", "error"))
+						return nil
+					}
+				} else if c.NArg() == 1 {
+					console = c.Args().Get(0)
+				} else {
+					return nil
+				}
+				CmdRemoveConsole(console)
 				return nil
 			},
 		},
@@ -619,7 +631,19 @@ func main() {
 			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
-				CmdRestartConsole(c.Args()[0])
+				var console string
+				if c.NArg() == 0 {
+					console = GetFromPrompt("Console Id", "")
+					if console == "" {
+						fmt.Printf(color("This is not a valid console. Please try again \n", "error"))
+						return nil
+					}
+				} else if c.NArg() == 1 {
+					console = c.Args().Get(0)
+				} else {
+					return nil
+				}
+				CmdRestartConsole(console)
 				return nil
 			},
 		},
@@ -647,7 +671,19 @@ func main() {
 			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
-				CmdStartConsole(c.Args()[0])
+				var console string
+				if c.NArg() == 0 {
+					console = GetFromPrompt("Console Id", "")
+					if console == "" {
+						fmt.Printf(color("This is not a valid console. Please try again \n", "error"))
+						return nil
+					}
+				} else if c.NArg() == 1 {
+					console = c.Args().Get(0)
+				} else {
+					return nil
+				}
+				CmdStartConsole(console)
 				return nil
 			},
 		},
@@ -657,7 +693,19 @@ func main() {
 			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
-				CmdStopConsole(c.Args()[0])
+				var console string
+				if c.NArg() == 0 {
+					console = GetFromPrompt("Console Id", "")
+					if console == "" {
+						fmt.Printf(color("This is not a valid console. Please try again \n", "error"))
+						return nil
+					}
+				} else if c.NArg() == 1 {
+					console = c.Args().Get(0)
+				} else {
+					return nil
+				}
+				CmdStopConsole(console)
 				return nil
 			},
 		},
@@ -666,21 +714,23 @@ func main() {
 			Usage:     "unmount /app filesystem from a container",
 			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
-				//access_token, _ := GetTokenAccess()
-				/*if access_token == "" {
-					fmt.Printf("It looks like you didn't authorize your credentials. \n")
-					CmdConfigure()
-					return nil
-				}*/
-				if c.Args()[0] == "all" {
-					CmdUnmountAllConsoles()
+				var console string
+				if c.NArg() == 0 {
+					console = GetFromPrompt("Console Id", "")
+					if console == "" {
+						fmt.Printf(color("This is not a valid console. Please try again \n", "error"))
+						return nil
+					}
+				} else if c.NArg() == 1 {
+					if c.Args()[0] == "all" {
+						CmdUnmountAllConsoles()
+					} else {
+						console = c.Args().Get(0)
+					}
 				} else {
-					CmdUnmountConsole(c.Args()[0])
+					return nil
 				}
-				/*if err != nil {
-					fmt.Println("Error: ", err)
-					panic(err)
-				}*/
+				CmdUnmountConsole(console)
 				return nil
 			},
 		},
