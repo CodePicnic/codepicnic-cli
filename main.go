@@ -739,7 +739,6 @@ func main() {
 			Usage: "update CodePicnic",
 			Action: func(c *cli.Context) error {
 				err := CmdUpdate()
-				fmt.Println(err)
 				return nil
 			},
 		},
