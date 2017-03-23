@@ -231,6 +231,11 @@ func main() {
 	app.Usage = "A CLI tool to manage your CodePicnic consoles"
 	var container_size, container_type, title, hostname, current_mode string
 	var client_id, client_secret string
+	client_id, client_secret = GetCredentialsFromFile()
+	err := codepicnic.Init(client_id, client_secret)
+	if err != nil {
+		fmt.Printf(color("Authorization error", "error"))
+	}
 	app.Action = func(c *cli.Context) error {
 		//Start the REPL if not argument given
 
@@ -563,11 +568,6 @@ func main() {
 			//},
 			Action: func(c *cli.Context) error {
 				CmdValidateCredentials()
-				client_id, client_secret := GetCredentialsFromFile()
-				err := codepicnic.Init(client_id, client_secret)
-				if err != nil {
-					fmt.Printf(color("Authorization error", "error"))
-				}
 
 				var mountbase string
 				var input_unmount string
@@ -743,7 +743,7 @@ func main() {
 			},
 		},
 	}
-	err := CmdCheck()
+	err = CmdCheck()
 	if err != nil {
 		fmt.Println(color(msg_rwperms, "error"))
 		color_exit()

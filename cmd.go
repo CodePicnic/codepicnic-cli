@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/CodePicnic/codepicnic-go"
 	"github.com/kardianos/osext"
 	"github.com/ryanuber/columnize"
 	"io"
@@ -194,23 +195,30 @@ func CmdStartConsole(console string) error {
 	fmt.Printf(color("Done.\n", "response"))
 	return nil
 }
-func CmdConnectConsole(console string) error {
-	access_token := GetTokenAccessFromFile()
+func CmdConnectConsole(container_name string) error {
+	/*access_token := GetTokenAccessFromFile()
 	if len(access_token) != TOKEN_LEN {
 		access_token, _ = CmdGetTokenAccess()
-	}
-	if valid, _, err := isValidConsole(access_token, console); valid {
-		fmt.Printf(color("Connecting to  %s ... ", "response"), console)
-		StartConsole(access_token, console)
-		ProxyConsole(access_token, console)
-		//ConnectConsole(access_token, console)
+	}*/
+	console, err := codepicnic.GetConsole(container_name)
+	//if valid, err := IsValidConsole(console); valid {
+	if err == nil {
+		fmt.Printf(color("Connecting to  %s ... ", "response"), container_name)
+		status, _ := console.Status()
+		if status != "running" {
+			console.Start()
+		}
+		console.ConnectClient()
+		ProxyConsole(codepicnic.GetToken(), container_name)
+		console.DisconnectClient()
+		console.Stop()
 	} else {
-		if err != nil {
+		/*if err != nil {
 			if strings.Contains(err.Error(), ERROR_USAGE_EXCEEDED) {
 				fmt.Printf(color("You have exceeded your monthly usage. Upgrade your account at https://codepicnic.com/dashboard/funds.\n", "error"))
 				return nil
 			}
-		}
+		}*/
 		fmt.Printf(color("This is not a valid console. Please try again \n", "response"))
 	}
 	return nil

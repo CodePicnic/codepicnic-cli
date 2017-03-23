@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/CodePicnic/codepicnic-go"
 	"github.com/Jeffail/gabs"
+
 	"github.com/go-ini/ini"
 	"io"
 	"io/ioutil"
@@ -209,6 +211,24 @@ func isValidConsole(token string, console string) (bool, ConsoleJson, error) {
 		}
 	}
 	return false, console_empty, nil
+}
+
+func IsValidConsole(console codepicnic.Console) (bool, error) {
+	var consoles []codepicnic.Console
+	consoles, err := codepicnic.ListConsoles()
+	if err != nil {
+		return false, err
+	}
+	fmt.Printf("%+v", consoles)
+	for _, c := range consoles {
+		fmt.Println(console.ContainerName())
+		fmt.Println(c.ContainerName())
+		if console.ContainerName() == c.ContainerName() {
+			return true, nil
+		}
+	}
+	return false, nil
+
 }
 
 func JsonListConsoles(access_token string) string {
