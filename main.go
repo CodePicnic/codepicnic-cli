@@ -236,6 +236,7 @@ func main() {
 	if err != nil {
 		fmt.Printf(color("Authorization error", "error"))
 	}
+	codepicnic.SetUserAgent(user_agent)
 	app.Action = func(c *cli.Context) error {
 		//Start the REPL if not argument given
 
