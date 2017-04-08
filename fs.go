@@ -10,6 +10,8 @@ import (
 	"golang.org/x/net/context"
 	"io"
 	"os"
+	//"os/signal"
+	//"syscall"
 	"strings"
 	"time"
 )
@@ -163,7 +165,6 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 			}
 		}
 	}()
-
 	err = fs.Serve(mp, filesys)
 	closeErr := mp.Close()
 	if err == nil {
@@ -191,12 +192,13 @@ func UnmountConsole(container_name string) error {
 				RemoveMountFromFile(container_name)
 			} else if strings.HasSuffix(err.Error(), "Device or resource busy") {
 				fmt.Printf(color("Can't unmount. Mount point for console %s is busy.\n", "error"), container_name)
-			} else if strings.HasPrefix(err.Error(), "invalid argument") {
+			} else if strings.HasSuffix(err.Error(), "invalid argument") {
 				isEmpty, _ := IsEmptyDir(mountpoint)
 				if isEmpty {
 					err = os.Remove(mountpoint)
 					RemoveMountFromFile(container_name)
 					fmt.Printf(color("Console %s succesfully cleaned\n", "response"), container_name)
+					return nil
 				} else {
 					fmt.Printf(color("Can't remove %s. Please remove the directory and try again\n", "error"), mountpoint)
 					return err

@@ -267,6 +267,14 @@ func main() {
 				if err != nil {
 					fmt.Printf(color("Authorization error", "error"))
 				}
+				                cs := make(chan os.Signal, 2)
+                signal.Notify(cs, os.Interrupt, syscall.SIGTERM)
+                go func() {
+                        <-cs
+			UnmountConsole(c.Args().Get(0))
+                        os.Exit(0)
+                }()
+
 				CmdMountConsole(c.Args())
 				return nil
 			},
@@ -725,6 +733,7 @@ func main() {
 				} else if c.NArg() == 1 {
 					if c.Args()[0] == "all" {
 						CmdUnmountAllConsoles()
+						return nil
 					} else {
 						console = c.Args().Get(0)
 					}
