@@ -190,6 +190,17 @@ func UnmountConsole(container_name string) error {
 				RemoveMountFromFile(container_name)
 			} else if strings.HasSuffix(err.Error(), "Device or resource busy") {
 				fmt.Printf(color("Can't unmount. Mount point for console %s is busy.\n", "error"), container_name)
+			} else if strings.HasSuffix(err.Error(), "invalid argument") {
+				isEmpty, _ := IsEmptyDir(mountpoint)
+				if isEmpty {
+					err = os.Remove(mountpoint)
+					RemoveMountFromFile(container_name)
+					fmt.Printf(color("Console %s succesfully cleaned\n", "response"), container_name)
+				} else {
+					fmt.Printf(color("Can't remove %s. Please remove the directory and try again\n", "error"), mountpoint)
+					return err
+				}
+				fmt.Printf(color("Can't unmount. Mount point for console %s is busy.\n", "error"), container_name)
 			} else {
 				fmt.Printf("Error when unmounting %s %s\n", container_name, err.Error())
 			}
@@ -326,4 +337,18 @@ func (fs *FS) OfflineSync(d *Dir, ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func IsEmptyDir(dir string) (bool, error) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	_, err = d.Readdirnames(1) // Or f.Readdir(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err // Either not empty or error, suits both cases
 }

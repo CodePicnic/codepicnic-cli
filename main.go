@@ -324,7 +324,7 @@ func main() {
 			Usage:     "connect to a console",
 			ArgsUsage: "[CONSOLE_ID]",
 			Action: func(c *cli.Context) error {
-				CmdValidateCredentials()
+				//CmdValidateCredentials()
 				var console string
 				if c.NArg() == 0 {
 					console = GetFromPrompt("Console Id", "")
