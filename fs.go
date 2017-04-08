@@ -191,7 +191,7 @@ func UnmountConsole(container_name string) error {
 				RemoveMountFromFile(container_name)
 			} else if strings.HasSuffix(err.Error(), "Device or resource busy") {
 				fmt.Printf(color("Can't unmount. Mount point for console %s is busy.\n", "error"), container_name)
-			} else if strings.HasSuffix(err.Error(), "invalid argument") {
+			} else if strings.HasPreffix(err.Error(), "invalid argument") {
 				isEmpty, _ := IsEmptyDir(mountpoint)
 				if isEmpty {
 					err = os.Remove(mountpoint)
