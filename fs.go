@@ -8,6 +8,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/net/context"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -344,7 +345,7 @@ func IsEmptyDir(dir string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer f.Close()
+	defer d.Close()
 
 	_, err = d.Readdirnames(1) // Or f.Readdir(1)
 	if err == io.EOF {
