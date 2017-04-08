@@ -183,6 +183,7 @@ func UnmountConsole(container_name string) error {
 		fmt.Printf("A mount point for container %s doesn't exist\n", container_name)
 	} else {
 		err := fuse.Unmount(mountpoint)
+		fmt.Println(err.Error())
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "exit status 1: fusermount: entry for") {
 				//if a mount point exists in the config but not in the OS.
