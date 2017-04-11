@@ -3,16 +3,17 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/CodePicnic/codepicnic-go"
-	"github.com/kardianos/osext"
-	"github.com/ryanuber/columnize"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
-	"syscall"
+
+	"github.com/CodePicnic/codepicnic-go"
+	"github.com/kardianos/osext"
+	"github.com/ryanuber/columnize"
+	//"syscall"
 	"time"
 )
 
@@ -134,8 +135,8 @@ func CmdConfigure() error {
 	fmt.Print(color("Client Secret: ", "prompt"))
 	input_secret, _ := reader_secret.ReadString('\n')
 	fmt.Print(color("Testing credentials... ", "response"))
-	client_id := strings.Trim(input_id, "\n")
-	client_secret := strings.Trim(input_secret, "\n")
+	client_id := strings.Trim(input_id, "\r\n")
+	client_secret := strings.Trim(input_secret, "\r\n")
 	access_token, err := GetTokenAccessFromCredentials(client_id, client_secret)
 	if err != nil {
 		fmt.Println("Error: ", err)
@@ -411,7 +412,8 @@ func BgMountConsole(console_id string, mountbase string) {
 			fmt.Printf(color("Mount point %s already exists, please remove it or try to mount in a different directory \n", "response"), mountpoint)
 		} else {
 			fmt.Printf(color("Mounting /app directory from %s ... ", "response"), console_id)
-			cmd := exec.Command("nohup", cp_bin, "bgmount", console_id, mountbase)
+			//cmd := exec.Command("nohup", cp_bin, "bgmount", console_id, mountbase)
+			cmd := exec.Command(cp_bin, "bgmount", console_id, mountbase)
 			err := cmd.Start()
 			if err != nil {
 				fmt.Printf("Error %v", err)
@@ -592,7 +594,7 @@ func CmdUpdate() error {
 		if input_update == "yes" {
 			file_tmp := "/tmp/codepicnic-" + version
 			cp_bin, _ := osext.Executable()
-
+			fmt.Println(cp_bin)
 			file, err := os.Open(cp_bin)
 			if err != nil {
 				return err
@@ -601,7 +603,7 @@ func CmdUpdate() error {
 			if err != nil {
 				return err
 			}
-			fi_sys := fi.Sys().(*syscall.Stat_t)
+			//fi_sys := fi.Sys().(*syscall.Stat_t)
 
 			// Create the file
 			out, err := os.Create(file_tmp)
@@ -631,7 +633,7 @@ func CmdUpdate() error {
 			if err != nil {
 				return err
 			}
-			os.Chown(cp_bin, int(fi_sys.Uid), int(fi_sys.Gid))
+			//os.Chown(cp_bin, int(fi_sys.Uid), int(fi_sys.Gid))
 			os.Chmod(cp_bin, fi.Mode())
 			fmt.Printf(color(" Done.\n", "response"))
 

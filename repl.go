@@ -3,11 +3,12 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/codegangsta/cli"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/codegangsta/cli"
 )
 
 const str_prompt = "CodePicnic> "
@@ -124,7 +125,10 @@ func Repl(c *cli.Context) {
 	for input != "." {
 		in := bufio.NewReader(os.Stdin)
 		fmt.Print(color(str_prompt, "prompt"))
-		input, err := in.ReadString('\n')
+		input, _ := in.ReadString('\n')
+		//if err != nil {
+		//	panic(err)
+		//}
 		input = TrimColor(input)
 		inputArgs := strings.Fields(input)
 		if len(inputArgs) == 0 {
@@ -287,7 +291,8 @@ func Repl(c *cli.Context) {
 				cli.ShowAppHelp(c)
 			case "exit":
 				fmt.Println(color("Bye!", "exit"))
-				panic(err)
+				//panic(err)
+				return
 			case "exec":
 				if len(inputArgs) < 2 {
 					console_id = GetFromPrompt("Console Id", "")

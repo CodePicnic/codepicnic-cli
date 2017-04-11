@@ -4,14 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/CodePicnic/codepicnic-go"
-	"github.com/Sirupsen/logrus"
-	"github.com/codegangsta/cli"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/docker/docker/pkg/system"
-	"golang.org/x/net/context"
 	"io"
 	"io/ioutil"
 	"os"
@@ -22,6 +14,11 @@ import (
 	"syscall"
 	"text/tabwriter"
 	"text/template"
+
+	"github.com/CodePicnic/codepicnic-go"
+	"github.com/Sirupsen/logrus"
+	"github.com/codegangsta/cli"
+	"github.com/docker/docker/pkg/system"
 )
 
 //const site = "https://codepicnic.com"
@@ -71,83 +68,6 @@ func getHomeDir() string {
 	}
 	return user_data.HomeDir
 
-}
-
-func ConnectConsole(access_token string, container_name string) {
-
-	defaultHeaders := map[string]string{"User-Agent": "Docker-Client/1.10.3 (linux)"}
-	cli, err := client.NewClient(swarm_host, "v1.22", nil, defaultHeaders)
-	if err != nil {
-		logrus.Fatalf("Error NewClient: %s", err)
-		panic(msg_bugs)
-	}
-	//r, err := cli.ContainerInspect(context.Background(), container_name)
-	r, err := cli.ContainerExecCreate(context.Background(), container_name, types.ExecConfig{User: "", Cmd: []string{"bash"}, Tty: true, AttachStdin: true, AttachStderr: true, AttachStdout: true, Detach: false})
-	if err != nil {
-		logrus.Fatalf("Error ExecCreate: %s", err)
-		panic(msg_bugs)
-	}
-	//fmt.Println(r.ID)
-
-	aResp, err := cli.ContainerExecAttach(context.Background(), r.ID, types.ExecConfig{Tty: true, Cmd: []string{"bash"}, Env: nil, AttachStdin: true, AttachStderr: true, AttachStdout: true, Detach: false})
-
-	if err != nil {
-		logrus.Fatalf("Error ExecAttach: %s", err)
-		panic(msg_bugs)
-	}
-	tty := true
-	if err != nil {
-		logrus.Fatalf("Couldn't attach to container: %s", err)
-	}
-	defer aResp.Close()
-	receiveStdout := make(chan error, 1)
-	if os.Stdout != nil || os.Stderr != nil {
-		go func() {
-			fmt.Printf("Reader: %s", aResp.Reader)
-			// When TTY is ON, use regular copy
-			if tty && os.Stdout != nil {
-				_, err = io.Copy(os.Stdout, aResp.Reader)
-			} else {
-				_, err = stdcopy.StdCopy(os.Stdout, os.Stderr, aResp.Reader)
-			}
-			receiveStdout <- err
-		}()
-	}
-
-	stdinDone := make(chan struct{})
-	go func() {
-		if os.Stdin != nil {
-			io.Copy(aResp.Conn, os.Stdin)
-			//fmt.Printf("stdinDone\n")
-		}
-
-		if err := aResp.CloseWrite(); err != nil {
-			if strings.HasSuffix(err.Error(), "use of closed network connection") {
-				//Connection already closed
-			} else {
-				logrus.Fatalf("Couldn't send EOF: %s", err)
-			}
-		}
-		//close(stdinDone)
-	}()
-
-	select {
-	case err := <-receiveStdout:
-		if err != nil {
-			logrus.Fatalf("Error receiveStdout: %s", err)
-		}
-	case <-stdinDone:
-		if os.Stdout != nil || os.Stderr != nil {
-			if err := <-receiveStdout; err != nil {
-				logrus.Fatalf("Error receiveStdout: %s", err)
-			}
-		}
-	}
-	close(stdinDone)
-	//stdinw := bufio.NewReader(os.Stdin)
-	//fmt.Printf("done\n")
-	aResp.Conn.Close()
-	return
 }
 
 func init() {
@@ -231,11 +151,12 @@ func main() {
 	app.Usage = "A CLI tool to manage your CodePicnic consoles"
 	var container_size, container_type, title, hostname, current_mode string
 	var client_id, client_secret string
+	CmdValidateCredentials()
 	client_id, client_secret = GetCredentialsFromFile()
 	err := codepicnic.Init(client_id, client_secret)
-	if err != nil {
-		fmt.Printf(color("Authorization error", "error"))
-	}
+	//if err != nil {
+	//	fmt.Printf(color("Authorization error", "error"))
+	//}
 	codepicnic.SetUserAgent(user_agent)
 	app.Action = func(c *cli.Context) error {
 		//Start the REPL if not argument given
@@ -261,12 +182,6 @@ func main() {
 			Usage:  "mount /app filesystem from a container",
 			Hidden: true,
 			Action: func(c *cli.Context) error {
-				CmdValidateCredentials()
-				client_id, client_secret := GetCredentialsFromFile()
-				err := codepicnic.Init(client_id, client_secret)
-				if err != nil {
-					fmt.Printf(color("Authorization error", "error"))
-				}
 				CmdMountConsole(c.Args())
 				return nil
 			},
