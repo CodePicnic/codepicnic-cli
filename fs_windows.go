@@ -1,53 +1,35 @@
+// Copyright 2016 Keybase Inc. All rights reserved.
+// Use of this source code is governed by a BSD
+// license that can be found in the LICENSE file.
+
+// +build windows
+
 package main
 
 import (
-	//"context"
-
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+	"time"
 	"unicode/utf8"
 
-	"golang.org/x/net/context"
-
-	"fmt"
-	"os"
-
 	codepicnic "github.com/CodePicnic/codepicnic-go"
+	"github.com/Jeffail/gabs"
 	"github.com/Sirupsen/logrus"
 	"github.com/keybase/kbfs/dokan"
 	"github.com/keybase/kbfs/libdokan"
+
+	"github.com/keybase/kbfs/dokan/winacl"
+	"golang.org/x/net/context"
 )
 
-type FS struct {
-	container  string
-	token      string
-	mountpoint string
-	state      string
-	//WaitList   []Operation
-}
-
-func (fs FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, data *dokan.CreateData) (file dokan.File, isDirectory bool, err error) {
-	fmt.Printf("FielInfo %+v \n", fi)
-	fmt.Printf("Data %+v \n", data)
-	return EmptyFile{}, false, nil
-}
-
-//func (fs FS) GetVolumeInformation(ctx context.Context) (dokan.VolumeInformation, error) {
-//	return dokan.VolumeInformation{}, nil
-//}
-
-func (fs FS) WithContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	return ctx, nil
-}
-
-func (fs FS) GetDiskFreeSpace(ctx context.Context) (dokan.FreeSpace, error) {
-	return dokan.FreeSpace{}, nil
-}
-
-func (fs FS) MoveFile(ctx context.Context, source *dokan.FileInfo, targetPath string, replaceExisting bool) error {
+func UnmountConsole(container_name string) error {
+	dokan.Unmount(container_name)
 	return nil
-}
-
-func (fs FS) ErrorPrint(error) {
-	return
 }
 
 func MountConsole(access_token string, container_name string, mount_dir string) error {
@@ -75,113 +57,481 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 		os.Mkdir(mount_dir+"/"+mountlink, 0755)
 	}
 	logrus.Info("Mount data:", mount_point, mountlabel)
-	//var filesys FS // Should be the real filesystem implementation
-	var filesys dokan.FileSystem
+
+	s0 := fsTableStore(emptyFS{}, nil)
+	defer fsTableFree(s0)
+	fs := newFS(container_name, access_token)
 	mount_drive, _ := utf8.DecodeRuneInString(mount_dir)
 
 	mount_driveletter := byte(mount_drive)
-	mp, err := dokan.Mount(&dokan.Config{
-		FileSystem: filesys,
+	mnt, err := dokan.Mount(&dokan.Config{
+		FileSystem: fs,
 		Path:       string([]byte{mount_driveletter, ':'}),
-		MountFlags: libdokan.DefaultMountFlags})
+		MountFlags: libdokan.DefaultMountFlags,
+	})
 	if err != nil {
-		logrus.Fatal("Mount failed:", err)
+		fmt.Println("Mount failed:", err)
 	}
-	err = mp.BlockTillDone()
+	err = mnt.BlockTillDone()
 	if err != nil {
 		logrus.Fatal("Filesystem exit:", err)
 	}
-
-	/*mp, err := fuse.Mount(mount_point, fuse.MaxReadahead(32*1024*1024),
-		fuse.AsyncRead(), fuse.VolumeName(mountlabel))
-	if err != nil {
-		logrus.Infof("serve err %v\n", err)
-		return err
-	}
-	defer mp.Close()
-	filesys := &FS{
-		token:      access_token,
-		container:  container_name,
-		mountpoint: mount_point,
-		state:      "online",
-	}*/
-	logrus.Debug("Start Dispatcher 100")
-	StartDispatcher(50)
-	logrus.Infof("Serve %v", filesys)
-
-	/*
-		var mountpoint string
-		if strings.HasPrefix(mount_dir, "/") {
-			mountpoint = filesys.mountpoint
-		} else {
-			pwd, _ := os.Getwd()
-			mountpoint = pwd + "/" + filesys.mountpoint
-		}
-		SaveMountsToFile(container_name, mountpoint)
-
-		serveErr := make(chan error, 1)
-		fmt.Printf("/app directory mounted on %s \n", mountpoint)
-
-		//ping_ticker := time.NewTicker(time.Millisecond * 60000)
-		ping_ticker := time.NewTicker(time.Millisecond * 30000)
-		go func() {
-			for _ = range ping_ticker.C {
-				logrus.Debug("Ping codepicnic.com/api ")
-				_, err := console.Status()
-				if err != nil {
-					switch err.Error() {
-					case codepicnic.ERROR_CONNECTION_REFUSED, codepicnic.ERROR_TCP_TIMEOUT, codepicnic.ERROR_CLIENT_TIMEOUT, codepicnic.ERROR_TLS_TIMEOUT, codepicnic.ERROR_NETWORK_UNREACHABLE:
-						filesys.StateDown()
-						//Check again after 10 seconds if state is offline-soft
-						if filesys.state == "offline-soft" {
-							time.Sleep(10000 * time.Millisecond)
-							_, err := console.Status()
-							if err != nil {
-								switch err.Error() {
-								case codepicnic.ERROR_CONNECTION_REFUSED, codepicnic.ERROR_TCP_TIMEOUT, codepicnic.ERROR_CLIENT_TIMEOUT, codepicnic.ERROR_TLS_TIMEOUT, codepicnic.ERROR_NETWORK_UNREACHABLE:
-									filesys.StateDown()
-								}
-							}
-						}
-					default:
-						logrus.Debugf("Ping %v", err)
-					}
-				} else {
-					filesys.StateUp()
-					//Check again after 10 seconds if state is online-soft
-					if filesys.state == "online-soft" {
-						time.Sleep(10000 * time.Millisecond)
-						_, err := console.Status()
-						if err != nil {
-							switch err.Error() {
-							case codepicnic.ERROR_CONNECTION_REFUSED, codepicnic.ERROR_TCP_TIMEOUT, codepicnic.ERROR_CLIENT_TIMEOUT, codepicnic.ERROR_TLS_TIMEOUT, codepicnic.ERROR_NETWORK_UNREACHABLE:
-								filesys.StateDown()
-							}
-						} else {
-							filesys.StateUp()
-						}
-					}
-				}
-				if filesys.state == "online" && len(filesys.WaitList) > 0 {
-					filesys.OnlineSync()
-				}
-			}
-		}()
-	*/
-	/*err = fs.Serve(mp, filesys)
-	closeErr := mp.Close()
-	if err == nil {
-		err = closeErr
-	}
-	serveErr <- err
-	<-mp.Ready
-	if err := mp.MountError; err != nil {
-		return err
-	}*/
-	return err
+	defer mnt.Close()
+	return nil
 }
 
-func UnmountConsole(container_name string) error {
+var _ dokan.FileSystem = emptyFS{}
+
+type emptyFS struct{}
+type emptyFile struct{}
+
+type FS struct {
+	emptyFS
+	container  string
+	token      string
+	mountpoint string
+	state      string
+	DirMap     map[string]bool
+	SizeMap    map[string]int64
+	NodeMap    map[string]dokan.File
+	//WaitList   []Operation
+}
+
+type File struct {
+	dir     *Dir
+	name    string
+	mime    string
+	mu      sync.Mutex
+	data    []byte
+	writers uint
+	new     bool
+	size    uint64
+	offline bool
+}
+
+type Dir struct {
+	emptyFile
+	fs            *FS
+	name          string
+	NodeMap       map[string]Node
+	parent        *Dir
+	lock          sync.Mutex
+	creationTime  time.Time
+	lastReadTime  time.Time
+	lastWriteTime time.Time
+	IsDir         bool
+}
+
+type NodeFile struct {
+	emptyFile
+
+	name          string
+	dir           *Dir
+	mime          string
+	fs            *FS
+	lock          sync.Mutex
+	creationTime  time.Time
+	lastReadTime  time.Time
+	lastWriteTime time.Time
+	IsDir         bool
+	data          []byte
+	writers       uint
+	new           bool
+	size          uint64
+	offline       bool
+}
+
+type Node interface {
+	GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error)
+}
+
+func (t emptyFile) GetFileSecurity(ctx context.Context, fi *dokan.FileInfo, si winacl.SecurityInformation, sd *winacl.SecurityDescriptor) error {
+	return nil
+}
+func (t emptyFile) SetFileSecurity(ctx context.Context, fi *dokan.FileInfo, si winacl.SecurityInformation, sd *winacl.SecurityDescriptor) error {
 
 	return nil
 }
+func (t emptyFile) Cleanup(ctx context.Context, fi *dokan.FileInfo) {
+	logrus.Info("Cleanup :", fi.Path())
+}
+
+func (t emptyFile) CloseFile(ctx context.Context, fi *dokan.FileInfo) {
+	logrus.Info("CloseFile :", fi.Path())
+}
+
+func (t emptyFS) WithContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return ctx, nil
+}
+
+func (t emptyFS) GetVolumeInformation(ctx context.Context) (dokan.VolumeInformation, error) {
+
+	return dokan.VolumeInformation{}, nil
+}
+
+func (t emptyFS) GetDiskFreeSpace(ctx context.Context) (dokan.FreeSpace, error) {
+
+	return dokan.FreeSpace{}, nil
+}
+
+func (t emptyFS) ErrorPrint(err error) {
+
+}
+
+func (t emptyFS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.CreateData) (dokan.File, bool, error) {
+
+	return emptyFile{}, true, nil
+}
+func (t emptyFile) CanDeleteFile(ctx context.Context, fi *dokan.FileInfo) error {
+	return dokan.ErrAccessDenied
+}
+func (t emptyFile) CanDeleteDirectory(ctx context.Context, fi *dokan.FileInfo) error {
+	return dokan.ErrAccessDenied
+}
+func (t emptyFile) SetEndOfFile(ctx context.Context, fi *dokan.FileInfo, length int64) error {
+
+	return nil
+}
+func (t emptyFile) SetAllocationSize(ctx context.Context, fi *dokan.FileInfo, length int64) error {
+
+	return nil
+}
+func (t emptyFS) MoveFile(ctx context.Context, source *dokan.FileInfo, targetPath string, replaceExisting bool) error {
+
+	return nil
+}
+func (t emptyFile) ReadFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
+	return len(bs), nil
+}
+func (t emptyFile) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
+	return len(bs), nil
+}
+func (t emptyFile) FlushFileBuffers(ctx context.Context, fi *dokan.FileInfo) error {
+
+	return nil
+}
+
+func (t emptyFile) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
+	var st dokan.Stat
+	st.FileAttributes = dokan.FileAttributeNormal
+	return &st, nil
+}
+func (t emptyFile) FindFiles(context.Context, *dokan.FileInfo, string, func(*dokan.NamedStat) error) error {
+	return nil
+}
+func (t emptyFile) SetFileTime(context.Context, *dokan.FileInfo, time.Time, time.Time, time.Time) error {
+	return nil
+}
+func (t emptyFile) SetFileAttributes(ctx context.Context, fi *dokan.FileInfo, fileAttributes dokan.FileAttribute) error {
+	return nil
+}
+
+func (t emptyFile) LockFile(ctx context.Context, fi *dokan.FileInfo, offset int64, length int64) error {
+	return nil
+}
+func (t emptyFile) UnlockFile(ctx context.Context, fi *dokan.FileInfo, offset int64, length int64) error {
+	return nil
+}
+
+func newFS(container_name string, access_token string) *FS {
+	var t FS
+	t.container = container_name
+	t.token = access_token
+	t.DirMap = make(map[string]bool)
+	t.SizeMap = make(map[string]int64)
+	//t.Node = newNode()
+	return &t
+}
+
+func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.CreateData) (dokan.File, bool, error) {
+	path := fi.Path()
+	switch cd.CreateDisposition {
+	case dokan.FileCreate:
+		logrus.Info("CreateDisposition: FileCreate")
+	case dokan.FileOpen:
+		// FileOpen        = CreateDisposition(1) If the file already exists, open it
+		//instead of creating a new file. If it does not, fail the request and do
+		//not create a new file
+		logrus.Info("CreateDisposition: FileOpen")
+		//n := &Node{
+		//	IsDir: false,
+		//	fs:    fs,
+		//}
+		if path == "\\" {
+			if cd.CreateOptions&dokan.FileNonDirectoryFile != 0 {
+				return nil, true, dokan.ErrFileIsADirectory
+			}
+			return Dir{fs: fs}, true, nil
+		}
+		/*if path == "\\ram.txt" {
+			return fs.Node, false, nil
+		}*/
+		//if node := fs.GetNode(path); node != nil {
+
+		if fs.DirMap[path] {
+			logrus.Infof("CreateFile Return File: %+v", node)
+			return Dir{fs: fs}, true, nil
+			//return node, true, nil
+
+			//	n.IsDir = true
+		} else {
+			logrus.Infof("CreateFile Return File: %+v", node)
+			return NodeFile{fs: fs}, false, nil
+			//return node, false, nil
+		}
+
+		//}
+
+	}
+	return nil, false, dokan.ErrObjectNameNotFound
+}
+
+func (fs *FS) GetNode(name string) dokan.File {
+
+	if fs.NodeMap == nil {
+		fs.NodeMap = make(map[string]dokan.File)
+		return nil
+	}
+	return fs.NodeMap[name]
+}
+func (t *FS) GetDiskFreeSpace(ctx context.Context) (dokan.FreeSpace, error) {
+	return dokan.FreeSpace{
+		FreeBytesAvailable:     testFreeAvail,
+		TotalNumberOfBytes:     testTotalBytes,
+		TotalNumberOfFreeBytes: testTotalFree,
+	}, nil
+}
+
+const (
+	// Windows mangles the last bytes of GetDiskFreeSpaceEx
+	// because of GetDiskFreeSpace and sectors...
+	testFreeAvail  = 0xA234567887654000
+	testTotalBytes = 0xB234567887654000
+	testTotalFree  = 0xC234567887654000
+)
+
+const helloStr = "hello world\r\n"
+
+func (d Dir) FindFiles(ctx context.Context, fi *dokan.FileInfo, p string, cb func(*dokan.NamedStat) error) error {
+
+	file_list, _ := d.ListFiles(fi.Path())
+	for _, f := range file_list {
+		var n dokan.File
+		st := dokan.NamedStat{}
+		st.Name = f.name
+		file_attr := dokan.FileAttributeNormal
+		var path string
+		if fi.Path() == "\\" {
+			path = ""
+		} else {
+			path = fi.Path()
+		}
+		if f.mime == "inode/directory" {
+			file_attr = dokan.FileAttributeDirectory
+			d.fs.DirMap[path+"\\"+f.name] = true
+			dir_nodemap := make(map[string]Node)
+			if d.fs.NodeMap != nil {
+				node_dir := d.fs.GetNode(f.name)
+				if node_dir != nil {
+					dir_nodemap = node_dir.(*Dir).NodeMap
+				}
+			}
+			n = &Dir{
+				fs:      d.fs,
+				name:    f.name,
+				NodeMap: dir_nodemap,
+				parent:  &d,
+			}
+		} else {
+			d.fs.DirMap[path+"\\"+f.name] = false
+			n = &NodeFile{
+				name:    f.name,
+				dir:     &d,
+				offline: false,
+				size:    f.size,
+				fs:      d.fs,
+				mime:    f.mime,
+			}
+		}
+
+		st.Stat = dokan.Stat{
+			FileSize:       int64(f.size),
+			FileAttributes: file_attr,
+		}
+		d.fs.SizeMap[path+"\\"+f.name] = st.Stat.FileSize
+		d.fs.NodeMap[path+"\\"+f.name] = n
+		err := cb(&st)
+		if err != nil {
+			return err
+		}
+
+	}
+	logrus.Infof("Dirmap: %+v", d.fs.DirMap)
+	logrus.Infof("SizeMap: %+v", d.fs.SizeMap)
+	logrus.Infof("NodeMap: %+v", d.fs.NodeMap)
+	return nil
+}
+
+func GetFullDirPath(path string) string {
+	return strings.TrimPrefix(path, "\\")
+
+}
+
+func (d *Dir) ListFiles(path string) ([]File, error) {
+	var FileCollection []File
+	//cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/files?path=" + d.GetFullDirPath()
+
+	cp_consoles_url := site + "/api/consoles/" + d.fs.container + "/files?path=" + GetFullDirPath(path)
+	req, err := http.NewRequest("GET", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+d.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		logrus.Errorf("List files %v", err)
+		return FileCollection, errors.New(ERROR_NOT_CONNECTED)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 401 {
+		return FileCollection, errors.New(ERROR_NOT_AUTHORIZED)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	jsonFiles, err := gabs.ParseJSON(body)
+	jsonPaths, _ := jsonFiles.ChildrenMap()
+	for key, child := range jsonPaths {
+		var jsonFile File
+		jsonFile.name = string(key)
+		//jsonFile.name = child.Path("path").Data().(string)
+		jsonFile.mime = child.Path("type").Data().(string)
+		jsonFile.size = uint64(child.Path("size").Data().(float64))
+		FileCollection = append(FileCollection, jsonFile)
+
+	}
+	return FileCollection, nil
+}
+
+func (t Dir) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
+	return &dokan.Stat{
+		FileAttributes: dokan.FileAttributeDirectory,
+	}, nil
+}
+
+func (t NodeFile) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
+	logrus.Info("GetFileInformation :", fi.Path())
+	return &dokan.Stat{
+		FileSize: int64(len(helloStr)),
+	}, nil
+}
+func (t NodeFile) ReadFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
+	logrus.Info("ReadFile :", fi.Path())
+	logrus.Infof("ReadFile : %+v", t)
+	contents, _ := t.ReadFileFromApi(fi.Path())
+	rd := strings.NewReader(contents)
+	bs_len, err := rd.ReadAt(bs, offset)
+	logrus.Info("ReadFile length: ", bs_len)
+	return bs_len, err
+}
+
+func (f NodeFile) ReadFileFromApi(path string) (string, error) {
+	cp_consoles_url := site + "/api/consoles/" + f.fs.container + "/read_file?path=" + GetFullDirPath(path)
+
+	req, err := http.NewRequest("GET", cp_consoles_url, nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+f.fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such host") {
+			return "", errors.New(ERROR_DNS_LOOKUP)
+		} else {
+			return "", err
+		}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 401 {
+		return "", errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	return string(body), nil
+}
+
+/*func newNode() *Node {
+	var r Node
+	r.creationTime = time.Now()
+	r.lastReadTime = r.creationTime
+	r.lastWriteTime = r.creationTime
+	return &r
+}*/
+/*
+func (r *Node) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
+	logrus.Info("GetFileInformation :", fi.Path())
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	return &dokan.Stat{
+		FileSize:   int64(len(r.data)),
+		LastAccess: r.lastReadTime,
+		LastWrite:  r.lastWriteTime,
+		Creation:   r.creationTime,
+	}, nil
+}
+
+func (r *Node) ReadFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
+	logrus.Info("ReadFile :", fi.Path())
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.lastReadTime = time.Now()
+	rd := bytes.NewReader(r.data)
+	return rd.ReadAt(bs, offset)
+}
+
+func (f *Node) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
+	logrus.Info("WriteFile :", fi.Path())
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.lastWriteTime = time.Now()
+	maxl := len(f.data)
+	if int(offset)+len(bs) > maxl {
+		maxl = int(offset) + len(bs)
+		f.data = append(f.data, make([]byte, maxl-len(f.data))...)
+
+	}
+	n := copy(f.data[int(offset):], bs)
+	return n, nil
+}
+func (r *Node) SetFileTime(ctx context.Context, fi *dokan.FileInfo, creationTime time.Time, lastReadTime time.Time, lastWriteTime time.Time) error {
+	logrus.Info("SetFileTime :", fi.Path())
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if !lastWriteTime.IsZero() {
+		r.lastWriteTime = lastWriteTime
+	}
+	return nil
+}
+func (r *Node) SetEndOfFile(ctx context.Context, fi *dokan.FileInfo, length int64) error {
+	logrus.Info("SetEndofFile :", fi.Path())
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.lastWriteTime = time.Now()
+	switch {
+	case int(length) < len(r.data):
+		r.data = r.data[:int(length)]
+	case int(length) > len(r.data):
+		r.data = append(r.data, make([]byte, int(length)-len(r.data))...)
+	}
+	return nil
+}
+func (r *Node) SetAllocationSize(ctx context.Context, fi *dokan.FileInfo, length int64) error {
+	logrus.Info("SetAllocationSize :", fi.Path())
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.lastWriteTime = time.Now()
+	switch {
+	case int(length) < len(r.data):
+		r.data = r.data[:int(length)]
+	}
+	return nil
+}
+*/
