@@ -157,11 +157,11 @@ func (t emptyFile) SetFileSecurity(ctx context.Context, fi *dokan.FileInfo, si w
 	return nil
 }
 func (t emptyFile) Cleanup(ctx context.Context, fi *dokan.FileInfo) {
-	logrus.Info("Cleanup :", fi.Path())
+	//logrus.Info("Cleanup :", fi.Path())
 }
 
 func (t emptyFile) CloseFile(ctx context.Context, fi *dokan.FileInfo) {
-	logrus.Info("CloseFile :", fi.Path())
+	//logrus.Info("CloseFile :", fi.Path())
 }
 
 func (t emptyFS) WithContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -169,12 +169,12 @@ func (t emptyFS) WithContext(ctx context.Context) (context.Context, context.Canc
 }
 
 func (t emptyFS) GetVolumeInformation(ctx context.Context) (dokan.VolumeInformation, error) {
-
+	logrus.Info("GetVolumeInformation")
 	return dokan.VolumeInformation{}, nil
 }
 
 func (t emptyFS) GetDiskFreeSpace(ctx context.Context) (dokan.FreeSpace, error) {
-
+	logrus.Info("GetDiskFreeSpace")
 	return dokan.FreeSpace{}, nil
 }
 
@@ -218,6 +218,7 @@ func (t emptyFile) FlushFileBuffers(ctx context.Context, fi *dokan.FileInfo) err
 func (t emptyFile) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
 	var st dokan.Stat
 	st.FileAttributes = dokan.FileAttributeNormal
+
 	return &st, nil
 }
 func (t emptyFile) FindFiles(context.Context, *dokan.FileInfo, string, func(*dokan.NamedStat) error) error {
@@ -263,29 +264,80 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 	logrus.Info("CreateFile: ", cd.CreateDisposition)
 	switch cd.CreateDisposition {
 	case dokan.FileCreate:
-
-	case dokan.FileOpen, dokan.FileOverwriteIf:
+		if cd.CreateOptions&dokan.FileDirectoryFile != 0 {
+			return nil, true, dokan.ErrFileIsADirectory
+		}
+		var node dokan.File
+		node = &NodeFile{
+			name: path,
+			//dir:     d,
+			//Offline: false,
+			size: 0,
+			fs:   fs,
+			//mime: f.mime,
+			//data:    []byte(f.name),
+		}
+		fs.DirMap[path] = false
+		fs.SizeMap[path] = 0
+		fs.NodeMap[path] = node
+		logrus.Infof("CreateFile: %+v", fs.NodeMap)
+		return node, false, nil
+	case dokan.FileOpen:
 		// FileOpen        = CreateDisposition(1) If the file already exists, open it
 		//instead of creating a new file. If it does not, fail the request and do
 		//not create a new file
-		logrus.Info("CreateDisposition: FileOpen", path)
-
 		if node := fs.GetNode(path); node != nil {
-
 			if fs.DirMap[path] {
-
 				if cd.CreateOptions&dokan.FileNonDirectoryFile != 0 {
 					return nil, true, dokan.ErrFileIsADirectory
 				}
+				logrus.Info("CreateFile Directory")
 				return node, true, nil
-
 			} else {
-
+				logrus.Info("CreateFile File")
 				return node, false, nil
 			}
+		}
+	case dokan.FileOverwriteIf:
+		// FileOpen        = CreateDisposition(1) If the file already exists, open it
+		//instead of creating a new file. If it does not, fail the request and do
+		//not create a new file
+		if node := fs.GetNode(path); node != nil {
+			if fs.DirMap[path] {
+				if cd.CreateOptions&dokan.FileNonDirectoryFile != 0 {
+					return nil, true, dokan.ErrFileIsADirectory
+				}
+				logrus.Info("CreateFile Directory")
+				return node, true, nil
+			} else {
+				logrus.Info("CreateFile File")
+				return node, false, nil
+			}
+		} else {
+			if cd.CreateOptions&dokan.FileDirectoryFile != 0 {
+				return nil, true, dokan.ErrFileIsADirectory
+			}
+			var node dokan.File
+			node = &NodeFile{
+				name: path,
+				//dir:     d,
+				//Offline: false,
+				size: 0,
+				fs:   fs,
+				new:  true,
+				//mime: f.mime,
+				//data:    []byte(f.name),
+			}
+			fs.DirMap[path] = false
+			fs.SizeMap[path] = 0
+			fs.NodeMap[path] = node
+
+			logrus.Infof("CreateFile: %+v", fs.NodeMap)
+			fs.TouchFile(path)
+
+			return node, false, nil
 
 		}
-
 	}
 	return nil, false, dokan.ErrObjectNameNotFound
 }
@@ -299,6 +351,7 @@ func (fs *FS) GetNode(name string) dokan.File {
 	return fs.NodeMap[name]
 }
 func (t *FS) GetDiskFreeSpace(ctx context.Context) (dokan.FreeSpace, error) {
+	logrus.Info("GetDiskFreeSpace")
 	return dokan.FreeSpace{
 		FreeBytesAvailable:     testFreeAvail,
 		TotalNumberOfBytes:     testTotalBytes,
@@ -334,6 +387,7 @@ func (d *Dir) FindFiles(ctx context.Context, fi *dokan.FileInfo, p string, cb fu
 		if f.mime == "inode/directory" {
 			file_attr = dokan.FileAttributeDirectory
 			d.fs.DirMap[path+"\\"+f.name] = true
+
 			dir_nodemap := make(map[string]Node)
 			if d.fs.NodeMap != nil {
 				node_dir := d.fs.GetNode(f.name)
@@ -372,9 +426,9 @@ func (d *Dir) FindFiles(ctx context.Context, fi *dokan.FileInfo, p string, cb fu
 		}
 
 	}
-	logrus.Infof("Dirmap: %+v", d.fs.DirMap)
-	logrus.Infof("SizeMap: %+v", d.fs.SizeMap)
-	logrus.Infof("NodeMap: %+v", d.fs.NodeMap)
+	//logrus.Infof("Dirmap: %+v", d.fs.DirMap)
+	//logrus.Infof("SizeMap: %+v", d.fs.SizeMap)
+	//logrus.Infof("NodeMap: %+v", d.fs.NodeMap)
 	return nil
 }
 
@@ -435,16 +489,29 @@ func (d *Dir) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*doka
 
 func (f *NodeFile) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
 	logrus.Info("GetFileInformation :", fi.Path())
-	return &dokan.Stat{
-		FileSize: int64(f.size),
-	}, nil
+	st := &dokan.Stat{
+		//Creation:           time.Now(),                // Timestamps for the file
+		//LastAccess:         time.Now(),                // Timestamps for the file
+		//LastWrite:          time.Now(),                // Timestamps for the file
+		FileSize:           int64(f.size),             // FileSize is the size of the file in bytes
+		FileIndex:          1000,                      // FileIndex is a 64 bit (nearly) unique ID of the file
+		FileAttributes:     dokan.FileAttributeNormal, // FileAttributes bitmask holds the file attributes
+		VolumeSerialNumber: 0,                         // VolumeSerialNumber is the serial number of the volume (0 is fine)
+		NumberOfLinks:      1,                         // NumberOfLinks can be omitted, if zero set to 1.
+		//ReparsePointTag:    0,                         // ReparsePointTag is for WIN32_FIND_DATA dwReserved0 for reparse point tags, typically it can be omitted.
+	}
+	logrus.Infof("GetFileInformation %+v", st)
+	return st, nil
+
 }
 func (f *NodeFile) ReadFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
 	logrus.Info("ReadFile :", fi.Path())
-	logrus.Infof("ReadFile : %+v", f)
+	//logrus.Infof("ReadFile : %+v", f)
 
 	var content string
-	if len(f.data) == 0 {
+	if f.new == true {
+		content = ""
+	} else if len(f.data) == 0 {
 		content, _ = f.ReadFileFromApi(fi.Path())
 		newLen := len(content)
 		switch {
@@ -537,6 +604,7 @@ func (f *NodeFile) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte,
 	n := copy(f.data[int(offset):], bs)
 	logrus.Info("WriteFile :", n)
 	f.AsyncUploadFile(fi.Path())
+	f.new = false
 	return n, nil
 }
 
@@ -580,6 +648,32 @@ func (f *NodeFile) AsyncUploadFile(path string) error {
 	//where is the file removed ??
 	if err != nil {
 		logrus.Errorf("Remove temp_file %v", err)
+	}
+	return nil
+}
+
+func (fs *FS) TouchFile(file string) (err error) {
+	new_file := GetFullFilePath(file)
+
+	cp_consoles_url := site + "/api/consoles/" + fs.container + "/exec"
+	var cp_payload string
+	cp_payload = ` { "commands": "touch ` + new_file + `" }`
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	if err != nil {
+		logrus.Errorf("CreateFile %v", err)
+		return err
 	}
 	return nil
 }
