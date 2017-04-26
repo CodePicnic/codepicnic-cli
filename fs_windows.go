@@ -7,9 +7,12 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
@@ -72,6 +75,7 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	if err != nil {
 		fmt.Println("Mount failed:", err)
 	}
+	StartDispatcher(50)
 	err = mnt.BlockTillDone()
 	if err != nil {
 		logrus.Fatal("Filesystem exit:", err)
@@ -375,8 +379,17 @@ func (d *Dir) FindFiles(ctx context.Context, fi *dokan.FileInfo, p string, cb fu
 }
 
 func GetFullDirPath(path string) string {
-	return strings.TrimPrefix(path, "\\")
+	path = strings.TrimPrefix(path, "\\")
+	return strings.Replace(path, "\\", "/", -1)
 
+}
+
+func GetFullFilePath(name string) string {
+	path := GetFullDirPath(name)
+	//if path != "" {
+	//	path = path + "/"
+	//}
+	return path
 }
 
 func (d *Dir) ListFiles(path string) ([]File, error) {
@@ -506,6 +519,8 @@ func (r *Node) ReadFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offs
 */
 func (f *NodeFile) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
 	logrus.Info("WriteFile :", fi.Path())
+	logrus.Info("WriteFile bs: ", string(bs))
+	logrus.Info("WriteFile f.data: ", string(f.data))
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	f.lastWriteTime = time.Now()
@@ -513,10 +528,60 @@ func (f *NodeFile) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte,
 	if int(offset)+len(bs) > maxl {
 		maxl = int(offset) + len(bs)
 		f.data = append(f.data, make([]byte, maxl-len(f.data))...)
+	} else {
+		newLen := offset + int64(len(bs))
+		f.data = append([]byte(nil), bs[:newLen]...)
 
 	}
+	logrus.Info("WriteFile f.data: ", string(f.data))
 	n := copy(f.data[int(offset):], bs)
+	logrus.Info("WriteFile :", n)
+	f.AsyncUploadFile(fi.Path())
 	return n, nil
+}
+
+func (f *NodeFile) AsyncUploadFile(path string) error {
+	logrus.Info("AsyncUploadFile: ", path)
+	cp_consoles_url := site + "/api/consoles/" + f.fs.container + "/upload_file"
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+	temp_file, err := ioutil.TempFile(os.TempDir(), "cp_")
+	err = ioutil.WriteFile(temp_file.Name(), f.data, 0666)
+	if err != nil {
+		logrus.Errorf("Writint temp %v", err)
+		return err
+	}
+	fw, err := w.CreateFormFile("file", temp_file.Name())
+	if err != nil {
+		logrus.Errorf("CreateFormFile %v", err)
+		return err
+	}
+	if _, err = io.Copy(fw, temp_file); err != nil {
+		return err
+	}
+	if fw, err = w.CreateFormField("path"); err != nil {
+		return err
+	}
+	upload_file := GetFullFilePath(path)
+	if _, err = fw.Write([]byte("/app/" + upload_file)); err != nil {
+		return err
+	}
+	w.Close()
+	req, err := http.NewRequest("POST", cp_consoles_url, &b)
+	if err != nil {
+		logrus.Errorf("Upload Request %v \n", err)
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+f.fs.token)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("User-Agent", user_agent)
+
+	Collector(req)
+	//where is the file removed ??
+	if err != nil {
+		logrus.Errorf("Remove temp_file %v", err)
+	}
+	return nil
 }
 
 func (f *NodeFile) SetFileTime(ctx context.Context, fi *dokan.FileInfo, creationTime time.Time, lastReadTime time.Time, lastWriteTime time.Time) error {
