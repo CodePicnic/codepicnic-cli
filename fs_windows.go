@@ -106,7 +106,7 @@ type File struct {
 	writers uint
 	new     bool
 	size    uint64
-	offline bool
+	Offline bool
 }
 
 type Dir struct {
@@ -138,7 +138,7 @@ type NodeFile struct {
 	writers       uint
 	new           bool
 	size          uint64
-	offline       bool
+	Offline       bool
 }
 
 type Node interface {
@@ -239,48 +239,48 @@ func newFS(container_name string, access_token string) *FS {
 	t.token = access_token
 	t.DirMap = make(map[string]bool)
 	t.SizeMap = make(map[string]int64)
+	t.NodeMap = make(map[string]dokan.File)
+	var n dokan.File
+	n = &Dir{
+		fs:   &t,
+		name: "",
+	}
+	t.NodeMap["\\"] = n
+	t.DirMap["\\"] = true
+	t.SizeMap["\\"] = 4096
 	//t.Node = newNode()
 	return &t
 }
 
 func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.CreateData) (dokan.File, bool, error) {
+
 	path := fi.Path()
+	logrus.Info("CreateFile: ", path)
+	logrus.Info("CreateFile: ", cd.CreateDisposition)
 	switch cd.CreateDisposition {
 	case dokan.FileCreate:
-		logrus.Info("CreateDisposition: FileCreate")
-	case dokan.FileOpen:
+
+	case dokan.FileOpen, dokan.FileOverwriteIf:
 		// FileOpen        = CreateDisposition(1) If the file already exists, open it
 		//instead of creating a new file. If it does not, fail the request and do
 		//not create a new file
-		logrus.Info("CreateDisposition: FileOpen")
-		//n := &Node{
-		//	IsDir: false,
-		//	fs:    fs,
-		//}
-		if path == "\\" {
-			if cd.CreateOptions&dokan.FileNonDirectoryFile != 0 {
-				return nil, true, dokan.ErrFileIsADirectory
+		logrus.Info("CreateDisposition: FileOpen", path)
+
+		if node := fs.GetNode(path); node != nil {
+
+			if fs.DirMap[path] {
+
+				if cd.CreateOptions&dokan.FileNonDirectoryFile != 0 {
+					return nil, true, dokan.ErrFileIsADirectory
+				}
+				return node, true, nil
+
+			} else {
+
+				return node, false, nil
 			}
-			return Dir{fs: fs}, true, nil
+
 		}
-		/*if path == "\\ram.txt" {
-			return fs.Node, false, nil
-		}*/
-		//if node := fs.GetNode(path); node != nil {
-
-		if fs.DirMap[path] {
-			logrus.Infof("CreateFile Return File: %+v", node)
-			return Dir{fs: fs}, true, nil
-			//return node, true, nil
-
-			//	n.IsDir = true
-		} else {
-			logrus.Infof("CreateFile Return File: %+v", node)
-			return NodeFile{fs: fs}, false, nil
-			//return node, false, nil
-		}
-
-		//}
 
 	}
 	return nil, false, dokan.ErrObjectNameNotFound
@@ -312,10 +312,11 @@ const (
 
 const helloStr = "hello world\r\n"
 
-func (d Dir) FindFiles(ctx context.Context, fi *dokan.FileInfo, p string, cb func(*dokan.NamedStat) error) error {
+func (d *Dir) FindFiles(ctx context.Context, fi *dokan.FileInfo, p string, cb func(*dokan.NamedStat) error) error {
 
 	file_list, _ := d.ListFiles(fi.Path())
 	for _, f := range file_list {
+		logrus.Info("FindFiles: ", f.name)
 		var n dokan.File
 		st := dokan.NamedStat{}
 		st.Name = f.name
@@ -340,17 +341,18 @@ func (d Dir) FindFiles(ctx context.Context, fi *dokan.FileInfo, p string, cb fun
 				fs:      d.fs,
 				name:    f.name,
 				NodeMap: dir_nodemap,
-				parent:  &d,
+				parent:  d,
 			}
 		} else {
 			d.fs.DirMap[path+"\\"+f.name] = false
 			n = &NodeFile{
 				name:    f.name,
-				dir:     &d,
-				offline: false,
+				dir:     d,
+				Offline: false,
 				size:    f.size,
 				fs:      d.fs,
 				mime:    f.mime,
+				//data:    []byte(f.name),
 			}
 		}
 
@@ -412,26 +414,41 @@ func (d *Dir) ListFiles(path string) ([]File, error) {
 	return FileCollection, nil
 }
 
-func (t Dir) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
+func (d *Dir) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
 	return &dokan.Stat{
 		FileAttributes: dokan.FileAttributeDirectory,
 	}, nil
 }
 
-func (t NodeFile) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
+func (f *NodeFile) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
 	logrus.Info("GetFileInformation :", fi.Path())
 	return &dokan.Stat{
-		FileSize: int64(len(helloStr)),
+		FileSize: int64(f.size),
 	}, nil
 }
-func (t NodeFile) ReadFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
+func (f *NodeFile) ReadFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
 	logrus.Info("ReadFile :", fi.Path())
-	logrus.Infof("ReadFile : %+v", t)
-	contents, _ := t.ReadFileFromApi(fi.Path())
-	rd := strings.NewReader(contents)
-	bs_len, err := rd.ReadAt(bs, offset)
-	logrus.Info("ReadFile length: ", bs_len)
-	return bs_len, err
+	logrus.Infof("ReadFile : %+v", f)
+
+	var content string
+	if len(f.data) == 0 {
+		content, _ = f.ReadFileFromApi(fi.Path())
+		newLen := len(content)
+		switch {
+		case newLen > len(f.data):
+			f.data = append(f.data, make([]byte, newLen-len(f.data))...)
+		case newLen < len(f.data):
+			f.data = f.data[:newLen]
+		}
+		f.data = []byte(content)
+
+	} else {
+		content = string(f.data)
+
+	}
+	rd := strings.NewReader(content)
+	logrus.Info("ReadFile length: ", len(f.data))
+	return rd.ReadAt(bs, offset)
 }
 
 func (f NodeFile) ReadFileFromApi(path string) (string, error) {
@@ -486,8 +503,8 @@ func (r *Node) ReadFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offs
 	rd := bytes.NewReader(r.data)
 	return rd.ReadAt(bs, offset)
 }
-
-func (f *Node) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
+*/
+func (f *NodeFile) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
 	logrus.Info("WriteFile :", fi.Path())
 	f.lock.Lock()
 	defer f.lock.Unlock()
@@ -501,37 +518,37 @@ func (f *Node) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, off
 	n := copy(f.data[int(offset):], bs)
 	return n, nil
 }
-func (r *Node) SetFileTime(ctx context.Context, fi *dokan.FileInfo, creationTime time.Time, lastReadTime time.Time, lastWriteTime time.Time) error {
+
+func (f *NodeFile) SetFileTime(ctx context.Context, fi *dokan.FileInfo, creationTime time.Time, lastReadTime time.Time, lastWriteTime time.Time) error {
 	logrus.Info("SetFileTime :", fi.Path())
-	r.lock.Lock()
-	defer r.lock.Unlock()
+	f.lock.Lock()
+	defer f.lock.Unlock()
 	if !lastWriteTime.IsZero() {
-		r.lastWriteTime = lastWriteTime
+		f.lastWriteTime = lastWriteTime
 	}
 	return nil
 }
-func (r *Node) SetEndOfFile(ctx context.Context, fi *dokan.FileInfo, length int64) error {
+func (f *NodeFile) SetEndOfFile(ctx context.Context, fi *dokan.FileInfo, length int64) error {
 	logrus.Info("SetEndofFile :", fi.Path())
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	r.lastWriteTime = time.Now()
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.lastWriteTime = time.Now()
 	switch {
-	case int(length) < len(r.data):
-		r.data = r.data[:int(length)]
-	case int(length) > len(r.data):
-		r.data = append(r.data, make([]byte, int(length)-len(r.data))...)
+	case int(length) < len(f.data):
+		f.data = f.data[:int(length)]
+	case int(length) > len(f.data):
+		f.data = append(f.data, make([]byte, int(length)-len(f.data))...)
 	}
 	return nil
 }
-func (r *Node) SetAllocationSize(ctx context.Context, fi *dokan.FileInfo, length int64) error {
+func (f *NodeFile) SetAllocationSize(ctx context.Context, fi *dokan.FileInfo, length int64) error {
 	logrus.Info("SetAllocationSize :", fi.Path())
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	r.lastWriteTime = time.Now()
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.lastWriteTime = time.Now()
 	switch {
-	case int(length) < len(r.data):
-		r.data = r.data[:int(length)]
+	case int(length) < len(f.data):
+		f.data = f.data[:int(length)]
 	}
 	return nil
 }
-*/
