@@ -350,21 +350,37 @@ func (fs *FS) GetNode(name string) dokan.File {
 	}
 	return fs.NodeMap[name]
 }
+
+func (fs FS) GetVolumeInformation(ctx context.Context) (dokan.VolumeInformation, error) {
+	logrus.Info("GetVolumeInformation")
+	return dokan.VolumeInformation{
+		//Maximum file name component length, in bytes, supported by the specified file system. A file name component is that portion of a file name between backslashes.
+		MaximumComponentLength: 0xFF, // This can be changed.
+		FileSystemFlags: dokan.FileCasePreservedNames | //The file system preserves the case of file names when it places a name on disk.
+			dokan.FileCaseSensitiveSearch | //The file system supports case-sensitive file names.
+			dokan.FileUnicodeOnDisk | //The file system supports Unicode in file names.
+			dokan.FileSupportsReparsePoints | //The file system supports reparse points.
+			dokan.FileSupportsRemoteStorage, //The file system supports remote storage.
+		FileSystemName: "NTFS",
+		VolumeName:     fs.container,
+	}, nil
+}
+
 func (t *FS) GetDiskFreeSpace(ctx context.Context) (dokan.FreeSpace, error) {
 	logrus.Info("GetDiskFreeSpace")
 	return dokan.FreeSpace{
-		FreeBytesAvailable:     testFreeAvail,
-		TotalNumberOfBytes:     testTotalBytes,
-		TotalNumberOfFreeBytes: testTotalFree,
+		FreeBytesAvailable:     diskFreeAvail,
+		TotalNumberOfBytes:     diskTotalBytes,
+		TotalNumberOfFreeBytes: diskTotalFree,
 	}, nil
 }
 
 const (
 	// Windows mangles the last bytes of GetDiskFreeSpaceEx
 	// because of GetDiskFreeSpace and sectors...
-	testFreeAvail  = 0xA234567887654000
-	testTotalBytes = 0xB234567887654000
-	testTotalFree  = 0xC234567887654000
+	diskFreeAvail  = 1024
+	diskTotalBytes = 8196
+	diskTotalFree  = 1024
 )
 
 const helloStr = "hello world\r\n"

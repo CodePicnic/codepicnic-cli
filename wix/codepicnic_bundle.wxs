@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+       
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:bal="http://schemas.microsoft.com/wix/BalExtension"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
+     xmlns:netfx='http://schemas.microsoft.com/wix/NetFxExtension'>
+
+  <Bundle Name="CodePicnic" Version="1.23" Manufacturer="CodePicnic" UpgradeCode="b92743f5-42f6-44ef-a672-2ee2b8c1da0c" IconSourceFile="basket_48.ico">
+      <Variable Name="DokanInstallFolder" Type="string" Value="[ProgramFiles6432Folder]Dokan\Dokan Library-1.0.0"/>
+<Variable Name="CodePicnicInstallFolder" Type="string" Value="[ProgramFiles6432Folder]CodePicnic"/>
+      <Variable Name="nodriver" bal:Overridable="yes" />
+
+
+
+    <!-- Contents of the bundle goes here -->
+    <!--
+        <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.HyperlinkLicense">
+          <bal:WixStandardBootstrapperApplication
+            LicenseUrl="http://codepicnic.com/team"
+            LogoFile="icon_basket.png"
+            />
+        </BootstrapperApplicationRef>
+        -->
+                <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.HyperlinkSidebarLicense">
+          <bal:WixStandardBootstrapperApplication
+                      LicenseUrl=""
+            LogoFile="icon_basket_white.png" LogoSideFile="codepicnic_side_install.png" 
+            />
+        </BootstrapperApplicationRef>
+
+
+      <Chain>
+      <MsiPackage SourceFile="codepicnic.msi"
+                  Compressed="yes"
+                  Visible="yes"
+                  Permanent="yes"
+                  >
+        <!--<MsiProperty Name="ADDLOCAL" Value="ALL" />-->
+        
+        <MsiProperty Name="MSIUNINSTALLSUPERSEDEDCOMPONENTS" Value="1"/>
+        <MsiProperty Name="INSTALLDIR" Value="[CodePicnicInstallFolder]" />
+        <MsiProperty Name="INSTALLDEVFILES" Value="0" />
+      </MsiPackage>                  
+      <MsiPackage SourceFile="Dokan_x64.msi"
+                  Compressed="yes"
+                  Visible="yes"
+                  Permanent="yes"
+                  >
+        <!--<MsiProperty Name="ADDLOCAL" Value="ALL" />-->
+        
+        <MsiProperty Name="MSIUNINSTALLSUPERSEDEDCOMPONENTS" Value="1"/>
+        <MsiProperty Name="INSTALLDIR" Value="[DokanInstallFolder]" />
+        <MsiProperty Name="INSTALLDEVFILES" Value="0" />
+      </MsiPackage>
+      
+
+      </Chain>
+  </Bundle>
+</Wix>

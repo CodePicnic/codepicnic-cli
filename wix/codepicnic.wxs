@@ -1,0 +1,46 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+    <Product Name='CodePicnic CLI' Manufacturer='CodePicnic'
+        Id='b92743f5-42f6-44ef-a672-2ee2b8c1da0c' 
+        UpgradeCode='c8861552-f5a8-416f-8972-dee2d71dce6d'
+        Language='1033' Codepage='1252' Version='1.22'>
+    <Package Id='*' Keywords='Installer' Description="CodePicnic CLI Installer"
+        InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252' InstallScope="perMachine" />
+    <Media Id='1' Cabinet='codepicnic.cab' EmbedCab='yes' />
+    <Directory Id='TARGETDIR' Name='SourceDir'>
+    
+      <Directory Id='ProgramFilesFolder' Name='PFiles'>
+          <Directory Id='INSTALLDIR' Name='CodePicnic'>
+            <Component Id='MainExecutable' Guid='6445511d-4bc2-4570-975d-192fbb4b6fc3'>
+              <Environment Id="PATH" Name="PATH" Value="[INSTALLDIR]" Permanent="yes" Part="last" Action="set" System="yes" />
+              <File Id='codepicnic.exe' Name='codepicnic.exe' Source='$(env.GOPATH)\codepicnic.exe' KeyPath='yes'>
+                <Shortcut Id="startmenuCodePicnic" Directory="ProgramMenuDir" Name="CodePicnic" WorkingDirectory='INSTALLDIR' Icon="codepicnic.exe" IconIndex="0" Advertise="yes" />
+                <Shortcut Id="desktopCodePicnic" Directory="DesktopFolder" Name="CodePicnic" WorkingDirectory='INSTALLDIR' Icon="codepicnic.exe" IconIndex="0" Advertise="yes" />
+              </File>
+            </Component>
+          </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" Name="Programs">
+        <Directory Id="ProgramMenuDir" Name="CodePicnic">
+          <Component Id="ProgramMenuDir" Guid="dbdece9e-c804-43e8-b270-38fb80a0d01a">
+            <RemoveFolder Id='ProgramMenuDir' On='uninstall' />
+            <RegistryValue Root='HKCU' Key='Software\[Manufacturer]\[ProductName]' Type='string' Value='' KeyPath='yes' />
+          </Component>
+        </Directory>
+      </Directory>
+
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <Feature Id='Complete' Level='1'>
+      <ComponentRef Id='MainExecutable' />
+      <ComponentRef Id='ProgramMenuDir' />
+    </Feature>
+
+    <Icon Id="codepicnic.exe" SourceFile="$(env.GOPATH)\codepicnic.exe" />
+
+
+
+  </Product>
+
+</Wix>
