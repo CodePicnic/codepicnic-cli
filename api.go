@@ -5,19 +5,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/CodePicnic/codepicnic-go"
 	"github.com/Jeffail/gabs"
 
-	"github.com/go-ini/ini"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/go-ini/ini"
 )
 
 const ERROR_NOT_AUTHORIZED = "Not Authorized"
+const ERROR_NOT_FOUND = "Not Found"
+const ERROR_BAD_REQUEST = "Bad Request"
 const ERROR_NOT_CONNECTED = "Disconnected"
 const ERROR_EMPTY_CREDENTIALS = "No Credentials"
 const ERROR_EMPTY_TOKEN = "No Token"

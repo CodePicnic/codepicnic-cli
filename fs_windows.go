@@ -30,6 +30,9 @@ import (
 	"golang.org/x/net/context"
 )
 
+var currentUserSID, currentUserSIDErr = winacl.CurrentProcessUserSid()
+var currentGroupSID, _ = winacl.CurrentProcessPrimaryGroupSid()
+
 func UnmountConsole(container_name string) error {
 	dokan.Unmount(container_name)
 	return nil
@@ -187,6 +190,7 @@ func (t emptyFS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.C
 	return emptyFile{}, true, nil
 }
 func (t emptyFile) CanDeleteFile(ctx context.Context, fi *dokan.FileInfo) error {
+	logrus.Info("CanDeleteFile: ", fi.Path())
 	return dokan.ErrAccessDenied
 }
 func (t emptyFile) CanDeleteDirectory(ctx context.Context, fi *dokan.FileInfo) error {
@@ -260,12 +264,27 @@ func newFS(container_name string, access_token string) *FS {
 func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.CreateData) (dokan.File, bool, error) {
 
 	path := fi.Path()
-	logrus.Info("CreateFile: ", path)
-	logrus.Info("CreateFile: ", cd.CreateDisposition)
+	//logrus.Infof("CreateFile: %s , cd: %+v , %+v", path, cd.CreateDisposition, cd.CreateOptions)
+	logrus.Infof("CreateFile: %s , cd: %+v ", path, cd)
 	switch cd.CreateDisposition {
 	case dokan.FileCreate:
 		if cd.CreateOptions&dokan.FileDirectoryFile != 0 {
-			return nil, true, dokan.ErrFileIsADirectory
+			var node dokan.File
+			node = &Dir{
+				name: path,
+				//dir:     d,
+				//Offline: false,
+				fs: fs,
+				//mime: f.mime,
+				//data:    []byte(f.name),
+			}
+			fs.DirMap[path] = true
+			fs.SizeMap[path] = 4096
+			fs.NodeMap[path] = node
+			logrus.Infof("CreateDir: %+v", fs.NodeMap)
+			fs.AsyncCreateDir(fi.Path())
+			return node, false, nil
+
 		}
 		var node dokan.File
 		node = &NodeFile{
@@ -281,6 +300,7 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 		fs.SizeMap[path] = 0
 		fs.NodeMap[path] = node
 		logrus.Infof("CreateFile: %+v", fs.NodeMap)
+		fs.TouchFile(path)
 		return node, false, nil
 	case dokan.FileOpen:
 		// FileOpen        = CreateDisposition(1) If the file already exists, open it
@@ -288,17 +308,15 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 		//not create a new file
 		if node := fs.GetNode(path); node != nil {
 			if fs.DirMap[path] {
-				if cd.CreateOptions&dokan.FileNonDirectoryFile != 0 {
-					return nil, true, dokan.ErrFileIsADirectory
-				}
-				logrus.Info("CreateFile Directory")
+				logrus.Info("FileOpen Dir", path)
 				return node, true, nil
 			} else {
-				logrus.Info("CreateFile File")
+				logrus.Info("FileOpen File", path)
 				return node, false, nil
 			}
 		}
 	case dokan.FileOverwriteIf:
+
 		// FileOpen        = CreateDisposition(1) If the file already exists, open it
 		//instead of creating a new file. If it does not, fail the request and do
 		//not create a new file
@@ -339,6 +357,7 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 
 		}
 	}
+	logrus.Info("CreateFile Not found: ", path)
 	return nil, false, dokan.ErrObjectNameNotFound
 }
 
@@ -355,12 +374,13 @@ func (fs FS) GetVolumeInformation(ctx context.Context) (dokan.VolumeInformation,
 	logrus.Info("GetVolumeInformation")
 	return dokan.VolumeInformation{
 		//Maximum file name component length, in bytes, supported by the specified file system. A file name component is that portion of a file name between backslashes.
-		MaximumComponentLength: 0xFF, // This can be changed.
+		MaximumComponentLength: 0x100, // This can be changed.
 		FileSystemFlags: dokan.FileCasePreservedNames | //The file system preserves the case of file names when it places a name on disk.
 			dokan.FileCaseSensitiveSearch | //The file system supports case-sensitive file names.
 			dokan.FileUnicodeOnDisk | //The file system supports Unicode in file names.
 			dokan.FileSupportsReparsePoints | //The file system supports reparse points.
-			dokan.FileSupportsRemoteStorage, //The file system supports remote storage.
+			dokan.FileSupportsRemoteStorage |
+			dokan.FilePersistentAcls, //The file system supports remote storage.
 		FileSystemName: "NTFS",
 		VolumeName:     fs.container,
 	}, nil
@@ -378,16 +398,22 @@ func (t *FS) GetDiskFreeSpace(ctx context.Context) (dokan.FreeSpace, error) {
 const (
 	// Windows mangles the last bytes of GetDiskFreeSpaceEx
 	// because of GetDiskFreeSpace and sectors...
-	diskFreeAvail  = 1024
-	diskTotalBytes = 8196
-	diskTotalFree  = 1024
+	diskFreeAvail  = 8 * 1024 * 1024
+	diskTotalBytes = 16 * 1024 * 1024
+	diskTotalFree  = 8 * 1024 * 1024
 )
 
 const helloStr = "hello world\r\n"
 
 func (d *Dir) FindFiles(ctx context.Context, fi *dokan.FileInfo, p string, cb func(*dokan.NamedStat) error) error {
 
-	file_list, _ := d.ListFiles(fi.Path())
+	file_list, err := d.ListFiles(fi.Path())
+	if err != nil {
+		if err.Error() == ERROR_BAD_REQUEST {
+			return dokan.ErrObjectNameNotFound
+		}
+	}
+
 	for _, f := range file_list {
 		logrus.Info("FindFiles: ", f.name)
 		var n dokan.File
@@ -480,10 +506,13 @@ func (d *Dir) ListFiles(path string) ([]File, error) {
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 {
 		return FileCollection, errors.New(ERROR_NOT_AUTHORIZED)
+	} else if resp.StatusCode == 400 {
+		return FileCollection, errors.New(ERROR_BAD_REQUEST)
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	jsonFiles, err := gabs.ParseJSON(body)
+	logrus.Infof("jsonFiles %+v", jsonFiles)
 	jsonPaths, _ := jsonFiles.ChildrenMap()
 	for key, child := range jsonPaths {
 		var jsonFile File
@@ -497,14 +526,35 @@ func (d *Dir) ListFiles(path string) ([]File, error) {
 	return FileCollection, nil
 }
 
+func (d *Dir) GetFileSecurity(ctx context.Context, fi *dokan.FileInfo, si winacl.SecurityInformation, sd *winacl.SecurityDescriptor) error {
+	logrus.Info("GetFileSecurity :", fi.Path())
+	if si&winacl.OwnerSecurityInformation != 0 && currentUserSID != nil {
+		sd.SetOwner(currentUserSID)
+	}
+	if si&winacl.GroupSecurityInformation != 0 && currentGroupSID != nil {
+		sd.SetGroup(currentGroupSID)
+	}
+	if si&winacl.DACLSecurityInformation != 0 {
+		var acl winacl.ACL
+		acl.AddAllowAccess(0x001F01FF, currentUserSID)
+		sd.SetDacl(&acl)
+	}
+	return nil
+}
+
 func (d *Dir) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
 	return &dokan.Stat{
 		FileAttributes: dokan.FileAttributeDirectory,
 	}, nil
 }
 
+func (f *NodeFile) GetFileSecurity(ctx context.Context, fi *dokan.FileInfo, si winacl.SecurityInformation, sd *winacl.SecurityDescriptor) error {
+	//logrus.Info("GetFileSecurity :", fi.Path())
+	return nil
+}
+
 func (f *NodeFile) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (*dokan.Stat, error) {
-	logrus.Info("GetFileInformation :", fi.Path())
+	//logrus.Info("GetFileInformation :", fi.Path())
 	st := &dokan.Stat{
 		//Creation:           time.Now(),                // Timestamps for the file
 		//LastAccess:         time.Now(),                // Timestamps for the file
@@ -516,7 +566,7 @@ func (f *NodeFile) GetFileInformation(ctx context.Context, fi *dokan.FileInfo) (
 		NumberOfLinks:      1,                         // NumberOfLinks can be omitted, if zero set to 1.
 		//ReparsePointTag:    0,                         // ReparsePointTag is for WIN32_FIND_DATA dwReserved0 for reparse point tags, typically it can be omitted.
 	}
-	logrus.Infof("GetFileInformation %+v", st)
+	//logrus.Infof("GetFileInformation %+v", st)
 	return st, nil
 
 }
@@ -600,6 +650,7 @@ func (r *Node) ReadFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offs
 	return rd.ReadAt(bs, offset)
 }
 */
+
 func (f *NodeFile) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte, offset int64) (int, error) {
 	logrus.Info("WriteFile :", fi.Path())
 	logrus.Info("WriteFile bs: ", string(bs))
@@ -622,6 +673,20 @@ func (f *NodeFile) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte,
 	f.AsyncUploadFile(fi.Path())
 	f.new = false
 	return n, nil
+}
+
+func (fs *FS) AsyncCreateDir(path string) (err error) {
+	newdir := GetFullFilePath(path)
+	cp_consoles_url := site + "/api/consoles/" + fs.container + "/create_folder"
+	cp_payload := ` { "path": "` + newdir + `" }`
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	Collector(req)
+	return nil
 }
 
 func (f *NodeFile) AsyncUploadFile(path string) error {
@@ -673,7 +738,7 @@ func (fs *FS) TouchFile(file string) (err error) {
 
 	cp_consoles_url := site + "/api/consoles/" + fs.container + "/exec"
 	var cp_payload string
-	cp_payload = ` { "commands": "touch ` + new_file + `" }`
+	cp_payload = ` { "commands": "touch '` + new_file + `'" }`
 	var jsonStr = []byte(cp_payload)
 
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))

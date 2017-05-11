@@ -30,7 +30,7 @@ func (f *File) ReadFile() (string, error) {
 			return "", err
 		}
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close()no
 	if resp.StatusCode == 401 {
 		return "", errors.New(ERROR_NOT_AUTHORIZED)
 	}

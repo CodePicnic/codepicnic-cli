@@ -30,6 +30,9 @@ func color(s string, t string) string {
 	esc_default := "\x1b[39m"
 	esc_end := "\033[38;5;68m"
 	esc_data := "\033[38;5;72m"
+	if runtime.GOOS == "windows" {
+		return s
+	}
 	if t == "exit" {
 		return esc_start + color_map[t] + esc_m + s + esc_default
 	} else if t == "off" {
