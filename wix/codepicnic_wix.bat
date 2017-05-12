@@ -1,3 +1,4 @@
+et GOPATH=%CD%
 cd wix
 "C:\Program Files (x86)\WiX Toolset v3.10\bin\candle.exe" codepicnic.wxs
 "C:\Program Files (x86)\WiX Toolset v3.10\bin\light.exe" codepicnic.wixobj
