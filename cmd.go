@@ -604,10 +604,10 @@ func CmdUpdate() error {
 			if err != nil {
 				return err
 			}
-			defer os.Remove(tmpfile.Name()) // clean up
+			//defer os.Remove(tmpfile.Name()) // clean up
 			//file_tmp := "/tmp/codepicnic-" + version
 			cp_bin, _ := osext.Executable()
-			fmt.Println(cp_bin)
+			/*fmt.Println(cp_bin)
 			file, err := os.Open(cp_bin)
 			if err != nil {
 				return err
@@ -615,7 +615,7 @@ func CmdUpdate() error {
 			fi, err := file.Stat()
 			if err != nil {
 				return err
-			}
+			}*/
 			//fi_sys := fi.Sys().(*syscall.Stat_t)
 
 			// Create the file
@@ -645,14 +645,13 @@ func CmdUpdate() error {
 			}
 
 			cmd := exec.Command(tmpfile.Name(), "bgupdate", cp_bin)
-			err := cmd.Start()
+			err = cmd.Start()
 			if err != nil {
 				fmt.Printf("Error %v", err)
 			} else {
-				fmt.Println(color("codepicnic.exe updated", "response")
+				fmt.Printf(color("codepicnic.exe updated", "response"))
 			}
 			fmt.Printf(color(" Done.\n", "response"))
-
 		}
 	}
 	return nil
