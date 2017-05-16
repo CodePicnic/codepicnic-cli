@@ -33,8 +33,13 @@ import (
 var currentUserSID, currentUserSIDErr = winacl.CurrentProcessUserSid()
 var currentGroupSID, _ = winacl.CurrentProcessPrimaryGroupSid()
 
-func UnmountConsole(container_name string) error {
-	dokan.Unmount(container_name)
+func UnmountConsole(mount_drive string) error {
+	//err := dokan.Unmount(container_name)
+	err := dokan.Unmount(mount_drive)
+	if err != nil {
+		fmt.Printf("console error %v \n", err)
+		return err
+	}
 	return nil
 }
 
@@ -67,6 +72,8 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	s0 := fsTableStore(emptyFS{}, nil)
 	defer fsTableFree(s0)
 	fs := newFS(container_name, access_token)
+	mount_dir = strings.TrimRight(mount_dir, ":")
+
 	mount_drive, _ := utf8.DecodeRuneInString(mount_dir)
 
 	mount_driveletter := byte(mount_drive)
@@ -77,7 +84,10 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	})
 	if err != nil {
 		fmt.Println("Mount failed:", err)
+		return err
 	}
+	SaveMountsToFile(container_name, mnt.Dir)
+	//fmt.Println(mnt.Dir)
 	StartDispatcher(50)
 	err = mnt.BlockTillDone()
 	if err != nil {

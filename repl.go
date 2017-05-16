@@ -44,6 +44,10 @@ func color(s string, t string) string {
 
 func color_exit() {
 	esc_default := "\x1b[39m"
+	if runtime.GOOS == "windows" {
+		fmt.Printf("")
+		return
+	}
 	fmt.Printf(esc_default)
 	return
 }

@@ -3,7 +3,7 @@
     <Product Name='CodePicnic CLI' Manufacturer='CodePicnic'
         Id='b92743f5-42f6-44ef-a672-2ee2b8c1da0c' 
         UpgradeCode='c8861552-f5a8-416f-8972-dee2d71dce6d'
-        Language='1033' Codepage='1252' Version='1.22'>
+        Language='1033' Codepage='1252' Version='$(env.CODEPICNICVERSION)'>
     <Package Id='*' Keywords='Installer' Description="CodePicnic CLI Installer"
         InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252' InstallScope="perMachine" />
     <Media Id='1' Cabinet='codepicnic.cab' EmbedCab='yes' />

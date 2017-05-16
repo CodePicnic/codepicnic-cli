@@ -187,6 +187,15 @@ func main() {
 			},
 		},
 		{
+			Name:   "bgupdate",
+			Usage:  "update in the background",
+			Hidden: true,
+			Action: func(c *cli.Context) error {
+				CmdBgUpdate(c.Args())
+				return nil
+			},
+		},
+		{
 			Name:   "check",
 			Usage:  "check version",
 			Hidden: true,
