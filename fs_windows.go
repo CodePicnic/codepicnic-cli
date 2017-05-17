@@ -182,7 +182,6 @@ func (t emptyFS) WithContext(ctx context.Context) (context.Context, context.Canc
 }
 
 func (t emptyFS) GetVolumeInformation(ctx context.Context) (dokan.VolumeInformation, error) {
-	logrus.Info("GetVolumeInformation")
 	return dokan.VolumeInformation{}, nil
 }
 
@@ -201,7 +200,8 @@ func (t emptyFS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.C
 }
 func (t emptyFile) CanDeleteFile(ctx context.Context, fi *dokan.FileInfo) error {
 	logrus.Info("CanDeleteFile: ", fi.Path())
-	return dokan.ErrAccessDenied
+	return nil
+	//return dokan.ErrAccessDenied
 }
 func (t emptyFile) CanDeleteDirectory(ctx context.Context, fi *dokan.FileInfo) error {
 	return dokan.ErrAccessDenied
@@ -275,7 +275,7 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 
 	path := fi.Path()
 	//logrus.Infof("CreateFile: %s , cd: %+v , %+v", path, cd.CreateDisposition, cd.CreateOptions)
-	logrus.Infof("CreateFile: %s , cd: %+v ", path, cd)
+	logrus.Infof("CreateFile: %s , cd: %+v ", path, cd.CreateDisposition)
 	switch cd.CreateDisposition {
 	case dokan.FileCreate:
 		if cd.CreateOptions&dokan.FileDirectoryFile != 0 {
@@ -309,7 +309,7 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 		fs.DirMap[path] = false
 		fs.SizeMap[path] = 0
 		fs.NodeMap[path] = node
-		logrus.Infof("CreateFile: %+v", fs.NodeMap)
+		logrus.Infof("TouchFile: %+v", fs.NodeMap)
 		fs.TouchFile(path)
 		return node, false, nil
 	case dokan.FileOpen:
@@ -318,7 +318,7 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 		//not create a new file
 		if node := fs.GetNode(path); node != nil {
 			if fs.DirMap[path] {
-				logrus.Info("FileOpen Dir", path)
+				//logrus.Info("FileOpen Dir", path)
 				return node, true, nil
 			} else {
 				logrus.Info("FileOpen File", path)
@@ -381,7 +381,6 @@ func (fs *FS) GetNode(name string) dokan.File {
 }
 
 func (fs FS) GetVolumeInformation(ctx context.Context) (dokan.VolumeInformation, error) {
-	logrus.Info("GetVolumeInformation")
 	return dokan.VolumeInformation{
 		//Maximum file name component length, in bytes, supported by the specified file system. A file name component is that portion of a file name between backslashes.
 		MaximumComponentLength: 0x100, // This can be changed.
@@ -425,7 +424,7 @@ func (d *Dir) FindFiles(ctx context.Context, fi *dokan.FileInfo, p string, cb fu
 	}
 
 	for _, f := range file_list {
-		logrus.Info("FindFiles: ", f.name)
+		//logrus.Info("FindFiles: ", f.name)
 		var n dokan.File
 		st := dokan.NamedStat{}
 		st.Name = f.name
@@ -522,7 +521,7 @@ func (d *Dir) ListFiles(path string) ([]File, error) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	jsonFiles, err := gabs.ParseJSON(body)
-	logrus.Infof("jsonFiles %+v", jsonFiles)
+	//logrus.Infof("jsonFiles %+v", jsonFiles)
 	jsonPaths, _ := jsonFiles.ChildrenMap()
 	for key, child := range jsonPaths {
 		var jsonFile File
