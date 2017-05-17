@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -600,10 +599,11 @@ func CmdUpdate() error {
 		//input_update = strings.TrimRight(input, "\r\n")
 		input_update := "yes"
 		if input_update == "yes" {
-			tmpfile, err := ioutil.TempFile("", "codepicnic")
-			if err != nil {
-				return err
-			}
+
+			//tmpfile, err := ioutil.TempFile("", "codepicnic")
+			//if err != nil {
+			//	return err
+			//}
 			//defer os.Remove(tmpfile.Name()) // clean up
 			//file_tmp := "/tmp/codepicnic-" + version
 			cp_bin, _ := osext.Executable()
@@ -618,13 +618,13 @@ func CmdUpdate() error {
 			}*/
 			//fi_sys := fi.Sys().(*syscall.Stat_t)
 
-			// Create the file
-			//out, err := os.Create(file_tmp)
+			//Create the file
+			tmpdir := os.TempDir()
+			tmpfile, err := os.Create(tmpdir + "\\codepicnic_new.exe")
 
-			//if err != nil {
-			//	return err
-			//}
-			//defer out.Close()
+			if err != nil {
+				return err
+			}
 
 			// Get the data
 			last_version, _ := GetLastVersion()
@@ -643,8 +643,9 @@ func CmdUpdate() error {
 				fmt.Println("error copying")
 				return err
 			}
-
-			cmd := exec.Command(tmpfile.Name(), "bgupdate", cp_bin)
+			tmpfile_name := tmpfile.Name()
+			tmpfile.Close()
+			cmd := exec.Command(tmpfile_name, "bgupdate", cp_bin)
 			err = cmd.Start()
 			if err != nil {
 				fmt.Printf("Error %v", err)
@@ -661,7 +662,7 @@ func CmdBgUpdate(args []string) {
 	cp_bin := args[0]
 	cp_bin_new, _ := osext.Executable()
 	fmt.Println("Copy from: ", cp_bin_new, " to: ", cp_bin)
-	time.Sleep(10 * time.Second)
+	time.Sleep(7 * time.Second)
 	r, err := os.Open(cp_bin_new)
 	if err != nil {
 		panic(err)
