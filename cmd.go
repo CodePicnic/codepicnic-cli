@@ -316,13 +316,14 @@ func CmdMountConsole(args []string) error {
 	return nil
 }
 func CmdUnmountConsole(console string) error {
-	if runtime.GOOS == "windows" {
-		mount_drive := GetMountsFromFile(console)
-		fmt.Println(mount_drive)
-		UnmountConsole(mount_drive)
-		RemoveMountFromFile(console)
+	/*
+		if runtime.GOOS == "windows" {
+			mount_drive := GetMountsFromFile(console)
+			fmt.Println(mount_drive)
+			UnmountConsole(mount_drive)
+			RemoveMountFromFile(console)
 
-	}
+		}*/
 	UnmountConsole(console)
 	return nil
 }
@@ -425,7 +426,7 @@ func BgMountConsole(console_id string, mountbase string) {
 			if err != nil {
 				fmt.Printf("Error %v", err)
 			} else {
-				fmt.Printf(color("Done * Mounted on %s \n", "response"), mountpoint)
+				fmt.Printf(color("Done * Mounted on %s \n", "response"), mountbase)
 				NotifyDesktop("Console succesfully mounted")
 			}
 		}

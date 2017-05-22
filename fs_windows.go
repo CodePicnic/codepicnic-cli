@@ -7,18 +7,23 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	npipe "gopkg.in/natefinch/npipe.v2"
 
 	codepicnic "github.com/CodePicnic/codepicnic-go"
 	"github.com/Jeffail/gabs"
@@ -33,13 +38,27 @@ import (
 var currentUserSID, currentUserSIDErr = winacl.CurrentProcessUserSid()
 var currentGroupSID, _ = winacl.CurrentProcessPrimaryGroupSid()
 
-func UnmountConsole(mount_drive string) error {
+func UnmountConsole(container_name string) error {
 	//err := dokan.Unmount(container_name)
-	err := dokan.Unmount(mount_drive)
+	conn, err := npipe.DialTimeout(`\\.\pipe\`+container_name, time.Millisecond*500)
+
 	if err != nil {
-		fmt.Printf("console error %v \n", err)
+		// handle error
+		fmt.Println("Please verify if the console is mounted.")
 		return err
 	}
+	if _, err := fmt.Fprintln(conn, "unmount "+container_name); err != nil {
+		fmt.Println("Please verify if the console is mounted.")
+		return err
+		// handle error
+	}
+	r := bufio.NewReader(conn)
+	_, err = r.ReadString('\n')
+	if err != nil {
+		// handle eror
+	}
+	fmt.Printf(color("Console %s succesfully unmounted\n", "response"), container_name)
+	conn.Close()
 	return nil
 }
 
@@ -89,6 +108,34 @@ func MountConsole(access_token string, container_name string, mount_dir string) 
 	SaveMountsToFile(container_name, mnt.Dir)
 	//fmt.Println(mnt.Dir)
 	StartDispatcher(50)
+	ln, err := npipe.Listen(`\\.\pipe\` + container_name)
+	if err != nil {
+		// handle error
+	}
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			// handle error
+			continue
+		}
+
+		// handle connection like any other net.Conn
+		go func(conn net.Conn) {
+			r := bufio.NewReader(conn)
+			msg, err := r.ReadString('\n')
+			if err != nil {
+				// handle error
+				return
+			}
+			fmt.Println(msg)
+			dokan.Unmount(mnt.Dir)
+			mnt.Close()
+			RemoveMountFromFile(container_name)
+			os.Exit(0)
+
+		}(conn)
+	}
 	err = mnt.BlockTillDone()
 	if err != nil {
 		logrus.Fatal("Filesystem exit:", err)
@@ -104,13 +151,15 @@ type emptyFile struct{}
 
 type FS struct {
 	emptyFS
-	container  string
-	token      string
-	mountpoint string
-	state      string
-	DirMap     map[string]bool
-	SizeMap    map[string]int64
-	NodeMap    map[string]dokan.File
+	container   string
+	token       string
+	mountpoint  string
+	state       string
+	DirMap      map[string]bool
+	DirCacheMap map[string]bool
+	SizeMap     map[string]int64
+	NodeMap     map[string]dokan.File
+	FileListMap map[string][]File
 	//WaitList   []Operation
 }
 
@@ -131,12 +180,14 @@ type Dir struct {
 	fs            *FS
 	name          string
 	NodeMap       map[string]Node
+	FileList      []File
 	parent        *Dir
 	lock          sync.Mutex
 	creationTime  time.Time
 	lastReadTime  time.Time
 	lastWriteTime time.Time
 	IsDir         bool
+	offline       bool
 }
 
 type NodeFile struct {
@@ -257,8 +308,11 @@ func newFS(container_name string, access_token string) *FS {
 	t.container = container_name
 	t.token = access_token
 	t.DirMap = make(map[string]bool)
+	t.DirCacheMap = make(map[string]bool)
 	t.SizeMap = make(map[string]int64)
 	t.NodeMap = make(map[string]dokan.File)
+	t.FileListMap = make(map[string][]File)
+
 	var n dokan.File
 	n = &Dir{
 		fs:   &t,
@@ -267,6 +321,7 @@ func newFS(container_name string, access_token string) *FS {
 	t.NodeMap["\\"] = n
 	t.DirMap["\\"] = true
 	t.SizeMap["\\"] = 4096
+	t.DirCacheMap["\\"] = false
 	//t.Node = newNode()
 	return &t
 }
@@ -275,7 +330,7 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 
 	path := fi.Path()
 	//logrus.Infof("CreateFile: %s , cd: %+v , %+v", path, cd.CreateDisposition, cd.CreateOptions)
-	logrus.Infof("CreateFile: %s , cd: %+v ", path, cd.CreateDisposition)
+	//logrus.Infof("CreateFile: %s , cd: %+v ", path, cd.CreateDisposition)
 	switch cd.CreateDisposition {
 	case dokan.FileCreate:
 		if cd.CreateOptions&dokan.FileDirectoryFile != 0 {
@@ -291,7 +346,8 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 			fs.DirMap[path] = true
 			fs.SizeMap[path] = 4096
 			fs.NodeMap[path] = node
-			logrus.Infof("CreateDir: %+v", fs.NodeMap)
+			fs.DirCacheMap[path] = false
+			//logrus.Infof("CreateDir: %+v", fs.NodeMap)
 			fs.AsyncCreateDir(fi.Path())
 			return node, false, nil
 
@@ -309,8 +365,8 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 		fs.DirMap[path] = false
 		fs.SizeMap[path] = 0
 		fs.NodeMap[path] = node
-		logrus.Infof("TouchFile: %+v", fs.NodeMap)
 		fs.TouchFile(path)
+		fs.DirCacheMap[GetFullParentPath(path)] = false
 		return node, false, nil
 	case dokan.FileOpen:
 		// FileOpen        = CreateDisposition(1) If the file already exists, open it
@@ -321,7 +377,7 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 				//logrus.Info("FileOpen Dir", path)
 				return node, true, nil
 			} else {
-				logrus.Info("FileOpen File", path)
+				//logrus.Info("FileOpen File", path)
 				return node, false, nil
 			}
 		}
@@ -335,10 +391,10 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 				if cd.CreateOptions&dokan.FileNonDirectoryFile != 0 {
 					return nil, true, dokan.ErrFileIsADirectory
 				}
-				logrus.Info("CreateFile Directory")
+				//logrus.Info("CreateFile Directory")
 				return node, true, nil
 			} else {
-				logrus.Info("CreateFile File")
+				//logrus.Info("CreateFile File")
 				return node, false, nil
 			}
 		} else {
@@ -360,14 +416,14 @@ func (fs *FS) CreateFile(ctx context.Context, fi *dokan.FileInfo, cd *dokan.Crea
 			fs.SizeMap[path] = 0
 			fs.NodeMap[path] = node
 
-			logrus.Infof("CreateFile: %+v", fs.NodeMap)
+			//logrus.Infof("CreateFile: %+v", fs.NodeMap)
 			fs.TouchFile(path)
 
 			return node, false, nil
 
 		}
 	}
-	logrus.Info("CreateFile Not found: ", path)
+	//logrus.Info("CreateFile Not found: ", path)
 	return nil, false, dokan.ErrObjectNameNotFound
 }
 
@@ -415,12 +471,21 @@ const (
 const helloStr = "hello world\r\n"
 
 func (d *Dir) FindFiles(ctx context.Context, fi *dokan.FileInfo, p string, cb func(*dokan.NamedStat) error) error {
-
-	file_list, err := d.ListFiles(fi.Path())
-	if err != nil {
-		if err.Error() == ERROR_BAD_REQUEST {
-			return dokan.ErrObjectNameNotFound
+	logrus.Info("FindFiles: ", fi.Path())
+	var file_list []File
+	var err error
+	if d.fs.DirCacheMap[fi.Path()] {
+		file_list = d.fs.FileListMap[fi.Path()]
+	} else {
+		file_list, err = d.ListFiles(fi.Path())
+		if err != nil {
+			if err.Error() == ERROR_BAD_REQUEST {
+				return dokan.ErrObjectNameNotFound
+			}
 		}
+
+		d.fs.FileListMap[fi.Path()] = file_list
+		d.fs.DirCacheMap[fi.Path()] = true
 	}
 
 	for _, f := range file_list {
@@ -487,6 +552,14 @@ func GetFullDirPath(path string) string {
 	path = strings.TrimPrefix(path, "\\")
 	return strings.Replace(path, "\\", "/", -1)
 
+}
+
+func GetFullParentPath(name string) string {
+	path := filepath.Dir(name)
+	//if path != "" {
+	//	path = path + "/"
+	//}
+	return path
 }
 
 func GetFullFilePath(name string) string {
@@ -762,7 +835,7 @@ func (fs *FS) TouchFile(file string) (err error) {
 		return errors.New(ERROR_NOT_AUTHORIZED)
 	}
 	if err != nil {
-		logrus.Errorf("CreateFile %v", err)
+		//logrus.Errorf("CreateFile %v", err)
 		return err
 	}
 	return nil
