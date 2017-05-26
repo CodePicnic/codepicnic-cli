@@ -757,6 +757,13 @@ func (f *NodeFile) WriteFile(ctx context.Context, fi *dokan.FileInfo, bs []byte,
 	return n, nil
 }
 
+func (f *NodeFile) Cleanup(ctx context.Context, fi *dokan.FileInfo) {
+	logrus.Info("Cleanup :", fi.Path(), fi.IsDeleteOnClose())
+	if fi.IsDeleteOnClose() {
+		f.fs.RemoveFile(fi.Path())
+	}
+}
+
 func (fs *FS) AsyncCreateDir(path string) (err error) {
 	newdir := GetFullFilePath(path)
 	cp_consoles_url := site + "/api/consoles/" + fs.container + "/create_folder"
@@ -821,6 +828,32 @@ func (fs *FS) TouchFile(file string) (err error) {
 	cp_consoles_url := site + "/api/consoles/" + fs.container + "/exec"
 	var cp_payload string
 	cp_payload = ` { "commands": "touch '` + new_file + `'" }`
+	var jsonStr = []byte(cp_payload)
+
+	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+fs.token)
+	req.Header.Set("User-Agent", user_agent)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		return errors.New(ERROR_NOT_AUTHORIZED)
+	}
+	if err != nil {
+		//logrus.Errorf("CreateFile %v", err)
+		return err
+	}
+	return nil
+}
+
+func (fs *FS) RemoveFile(file string) (err error) {
+	rm_path := GetFullFilePath(file)
+
+	cp_consoles_url := site + "/api/consoles/" + fs.container + "/exec"
+	var cp_payload string
+	cp_payload = ` { "commands": "rm '` + rm_path + `'" }`
 	var jsonStr = []byte(cp_payload)
 
 	req, err := http.NewRequest("POST", cp_consoles_url, bytes.NewBuffer(jsonStr))
