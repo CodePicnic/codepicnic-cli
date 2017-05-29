@@ -19,7 +19,6 @@
               </File>
              </Component>
             <Component Id="NotificationIcon" Guid="80c91f13-4ddc-4b91-9eb2-26258d69657a">
-                <Environment Id="PATH" Name="PATH" Value="[INSTALLDIR]" Permanent="yes" Part="last" Action="set" System="yes" />
                 <File Id="codepicnic.png" Source="$(env.GOPATH)\codepicnic.png" KeyPath="yes"/>
             </Component>
           </Directory>
