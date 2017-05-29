@@ -18,7 +18,8 @@
                 <Shortcut Id="desktopCodePicnic" Directory="DesktopFolder" Name="CodePicnic" WorkingDirectory='INSTALLDIR' Icon="codepicnic.exe" IconIndex="0" Advertise="yes" />
               </File>
              </Component>
-            <Component Id="codepicnic.png" Guid="80c91f13-4ddc-4b91-9eb2-26258d69657a">
+            <Component Id="NotificationIcon" Guid="80c91f13-4ddc-4b91-9eb2-26258d69657a">
+                <Environment Id="PATH" Name="PATH" Value="[INSTALLDIR]" Permanent="yes" Part="last" Action="set" System="yes" />
                 <File Id="codepicnic.png" Source="$(env.GOPATH)\codepicnic.png" KeyPath="yes"/>
             </Component>
           </Directory>
@@ -37,6 +38,7 @@
 
     <Feature Id='Complete' Level='1'>
       <ComponentRef Id='MainExecutable' />
+      <ComponentRef Id='NotificationIcon' />
       <ComponentRef Id='ProgramMenuDir' />
     </Feature>
 
